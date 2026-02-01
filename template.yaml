@@ -1,0 +1,112 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Credit Card Tracker - SMS-based expense classification
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+  TwilioAccountSid:
+    Type: String
+    NoEcho: true
+  TwilioAuthToken:
+    Type: String
+    NoEcho: true
+  TwilioPhoneNumber:
+    Type: String
+  PlaidClientId:
+    Type: String
+    NoEcho: true
+  PlaidSecret:
+    Type: String
+    NoEcho: true
+  PlaidAccessToken:
+    Type: String
+    NoEcho: true
+  UserAName:
+    Type: String
+    Default: Alex
+  UserAPhone:
+    Type: String
+  UserBName:
+    Type: String
+    Default: Beth
+  UserBPhone:
+    Type: String
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        S3_BUCKET: !Ref TransactionsBucket
+        TWILIO_ACCOUNT_SID: !Ref TwilioAccountSid
+        TWILIO_AUTH_TOKEN: !Ref TwilioAuthToken
+        TWILIO_PHONE_NUMBER: !Ref TwilioPhoneNumber
+        PLAID_CLIENT_ID: !Ref PlaidClientId
+        PLAID_SECRET: !Ref PlaidSecret
+        PLAID_ACCESS_TOKEN: !Ref PlaidAccessToken
+        USER_A_NAME: !Ref UserAName
+        USER_A_PHONE: !Ref UserAPhone
+        USER_B_NAME: !Ref UserBName
+        USER_B_PHONE: !Ref UserBPhone
+
+Resources:
+  TransactionsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub credit-card-tracker-${Environment}-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  DailyScanFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub credit-card-tracker-daily-scan-${Environment}
+      Handler: lambdas/daily_scan.handler
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref TransactionsBucket
+      Events:
+        DailySchedule:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 9 * * ? *)
+            Description: Daily transaction scan
+            Enabled: true
+        MonthlySettlement:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 10 1 * ? *)
+            Description: Monthly settlement calculation
+            Enabled: true
+
+  WebhookFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub credit-card-tracker-webhook-${Environment}
+      Handler: lambdas/webhook.handler
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref TransactionsBucket
+      Events:
+        TwilioWebhook:
+          Type: Api
+          Properties:
+            Path: /sms
+            Method: POST
+
+Outputs:
+  WebhookUrl:
+    Description: Twilio webhook URL
+    Value: !Sub https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/sms
+  S3Bucket:
+    Description: S3 bucket for transaction data
+    Value: !Ref TransactionsBucket
