@@ -19,9 +19,9 @@ def parse_line(line: str) -> Classification | None:
         
     # Regex breakdown:
     # ^(\d+)      : Start with digits (group 1)
-    # ([SABsab])  : Classification char (group 2)
+    # ([a-zA-Z]+) : Classification string (group 2) - allow full names
     # (\d+)?$     : Optional percentage digits at end (group 3)
-    match = re.match(r"^(\d+)([SABsab])(\d+)?$", line)
+    match = re.match(r"^(\d+)([a-zA-Z]+)(\d+)?$", line)
     if not match:
         return None
         

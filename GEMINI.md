@@ -7,16 +7,16 @@
 **Stack:** Python 3.11, AWS SAM (Infrastructure as Code), Twilio (SMS), Plaid (Banking API).
 
 ## Current Status
-**Phase:** Initialization / implementation.
-**Artifacts:** `PROJECT_SPECIFICATION.md` contains the complete, detailed requirements and architecture. The codebase is currently being scaffolded based on these specs.
+**Phase:** Ready for Deployment.
+**Artifacts:** Application code, tests, and SAM template are complete. `sam build` passes.
 
 ## Development Conventions
 
 ### Tech Stack & Tools
-*   **Runtime:** Python 3.11
+*   **Runtime:** Python 3.11+
 *   **Infrastructure:** AWS SAM (`template.yaml`)
 *   **Testing:** `pytest` using `pytest-mock` and a custom in-memory S3 mock (avoiding `moto` due to compatibility issues).
-*   **Linting/Formatting:** (Pending setup, likely `ruff` or `black` + `flake8`).
+*   **Linting/Formatting:** (Standard Python tooling).
 
 ### Architecture Structure
 *   `lambdas/`: AWS Lambda function handlers (`daily_scan.py`, `webhook.py`).
@@ -29,10 +29,9 @@
 *   **Settlement:** Monthly calculation (10th-9th billing cycle) triggered by EventBridge.
 
 ## Building & Running
-(Note: These commands will be valid once the project is scaffolded)
 
 *   **Build:** `sam build`
-*   **Test:** `pytest`
+*   **Test:** `pytest` (or `PYTHONPATH=. .venv/bin/pytest`)
 *   **Deploy:** `sam deploy --guided` (first time), `sam deploy` (subsequent)
 
 ## Reference

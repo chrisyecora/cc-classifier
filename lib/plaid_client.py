@@ -1,8 +1,7 @@
 import time
 import plaid
 from plaid.api import plaid_api
-from plaid.model.transactions_get_request import TransactionsGetRequest
-from plaid.model.transactions_get_request_options import TransactionsGetRequestOptions
+from plaid.model.transactions_sync_request import TransactionsSyncRequest
 from datetime import date
 from config import get_config
 
@@ -12,8 +11,18 @@ def get_plaid_client():
     global _client
     if _client is None:
         config = get_config()
+        print("DEBUG", config)
+
+        host = plaid.Environment.Sandbox
+        if config.plaid_env == "sandbox":
+            host = plaid.Environment.Sandbox
+
+
+        if config.plaid_env == "production":
+            host = plaid.Environment.Production
+
         configuration = plaid.Configuration(
-            host=plaid.Environment.Sandbox if config.environment == "dev" else plaid.Environment.Production,
+            host=host,
             api_key={
                 'clientId': config.plaid_client_id,
                 'secret': config.plaid_secret,
@@ -24,58 +33,80 @@ def get_plaid_client():
     return _client
 
 def fetch_transactions(start_date: date, end_date: date, max_retries: int = 3) -> list[dict]:
+    """
+    Fetches transactions using Plaid's /transactions/sync endpoint.
+    Filters the results to include only those within start_date and end_date (inclusive).
+    """
     client = get_plaid_client()
     config = get_config()
     
-    request = TransactionsGetRequest(
-        access_token=config.plaid_access_token,
-        start_date=start_date,
-        end_date=end_date,
-        options=TransactionsGetRequestOptions(
-            count=500, # Max per page
-            offset=0
-        )
-    )
+    added_transactions = []
     
-    response = None
+    # Retry logic wraps the entire sync process
     for attempt in range(max_retries):
         try:
-            response = client.transactions_get(request)
-            break
+            cursor = ''
+            has_more = True
+            current_added = []
+            
+            while has_more:
+                request = TransactionsSyncRequest(
+                    access_token=config.plaid_access_token,
+                    cursor=cursor,
+                )
+                response = client.transactions_sync(request)
+                
+                # Convert to dict for easier handling of lists
+                resp_dict = response.to_dict()
+                
+                current_added.extend(resp_dict['added'])
+                # We ignore modified/removed for this simple implementation
+                
+                has_more = resp_dict['has_more']
+                cursor = resp_dict['next_cursor']
+                
+            added_transactions = current_added
+            break # Success
+            
         except Exception as e:
             if attempt == max_retries - 1:
+                print(f"Error fetching transactions: {e}")
                 raise e
             time.sleep(2 ** attempt) # Exponential backoff
             
-    if not response:
-        return []
-        
-    return _transform_transactions(response.transactions)
+    # Filter by date range
+    filtered_transactions = []
+    for t in added_transactions:
+        # t is a dict from response.to_dict()
+        t_date_str = str(t.get('date')) # Ensure string 'YYYY-MM-DD'
+        if not t_date_str:
+            continue
+            
+        try:
+            t_date = date.fromisoformat(t_date_str)
+            if start_date <= t_date <= end_date:
+                filtered_transactions.append(t)
+        except ValueError:
+            continue
+            
+    return _transform_transactions(filtered_transactions)
 
 def _transform_transactions(plaid_transactions: list) -> list[dict]:
     result = []
     for t in plaid_transactions:
-        # Access attributes directly assuming model object, but tests might use dicts if not careful.
-        # Plaid-python returns model objects.
-        # t.amount is positive for expenses in Plaid?
-        # Plaid docs: "positive values when money moves out of the account" (Expense)
-        # "negative values when money moves in" (Credit)
-        
-        # We handle credits (negative amounts) same as expenses for now, 
-        # allowing classification of refunds.
-        
-        # Safe attribute access (handle mock objects which might be dicts in some test setups, 
-        # but in our test we set `mock_response.transactions = [dict]`.
-        # Real Plaid client returns objects. Our code should handle objects.
-        # For our test to pass with dicts in `mock_response`, we'd need to mock them as objects 
-        # or access them in a way that handles both.
-        # Ideally, we should mock them as objects or use `getattr`.
-        
-        txn_id = getattr(t, "transaction_id", None) or t.get("transaction_id")
-        date_val = getattr(t, "date", None) or t.get("date")
-        amount = getattr(t, "amount", None) if hasattr(t, "amount") else t.get("amount")
-        name = getattr(t, "name", None) or t.get("name")
-        merchant_name = getattr(t, "merchant_name", None) or t.get("merchant_name")
+        # Handle both object (from test mocks) and dict (from sync response)
+        if isinstance(t, dict):
+            txn_id = t.get("transaction_id")
+            date_val = t.get("date")
+            amount = t.get("amount")
+            name = t.get("name")
+            merchant_name = t.get("merchant_name")
+        else:
+            txn_id = getattr(t, "transaction_id", None)
+            date_val = getattr(t, "date", None)
+            amount = getattr(t, "amount", None)
+            name = getattr(t, "name", None)
+            merchant_name = getattr(t, "merchant_name", None)
         
         result.append({
             "transaction_id": txn_id,

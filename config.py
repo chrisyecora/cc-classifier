@@ -12,6 +12,7 @@ class Config:
     plaid_client_id: str
     plaid_secret: str
     plaid_access_token: str
+    plaid_env: str
     user_a_name: str
     user_a_phone: str
     user_b_name: str
@@ -31,6 +32,7 @@ def get_config() -> Config:
             plaid_client_id=os.environ.get("PLAID_CLIENT_ID", ""),
             plaid_secret=os.environ.get("PLAID_SECRET", ""),
             plaid_access_token=os.environ.get("PLAID_ACCESS_TOKEN", ""),
+            plaid_env=os.environ.get("PLAID_ENV", "sandbox"),
             user_a_name=os.environ.get("USER_A_NAME", "Alex"),
             user_a_phone=os.environ.get("USER_A_PHONE", ""),
             user_b_name=os.environ.get("USER_B_NAME", "Beth"),

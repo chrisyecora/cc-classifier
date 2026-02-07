@@ -18,3 +18,4 @@ ENV/
 # Project specific
 .env
 .pytest_cache/
+samconfig.toml
