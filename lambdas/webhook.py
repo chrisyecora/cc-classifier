@@ -25,11 +25,48 @@ def handler(event, context):
             "body": json.dumps({"type": 1})
         }
         
-    # 3 = MESSAGE_COMPONENT (Button click)
+    # 3 = MESSAGE_COMPONENT (Button click or Select Menu)
     if t == 3:
-        return handle_button_click(interaction)
+        data = interaction.get("data", {})
+        component_type = data.get("component_type")
         
+        # 2 = Button, 3 = Select Menu
+        if component_type == 2:
+            return handle_button_click(interaction)
+        elif component_type == 3:
+            return handle_select_menu(interaction)
+            
     return {"statusCode": 400, "body": "Unknown interaction type"}
+
+def handle_select_menu(interaction):
+    data = interaction.get("data", {})
+    # Custom ID: classify_split:txn_id
+    custom_id = data.get("custom_id", "")
+    # Values: ["S70"]
+    values = data.get("values", [])
+    
+    if not values:
+        return json_response(4, "No value selected.")
+        
+    value = values[0] # e.g. "S70"
+    
+    # Extract classification and percentage
+    # S70 -> cls=S, pct=70
+    classification = value[0]
+    try:
+        percentage = int(value[1:])
+    except ValueError:
+        percentage = None
+        
+    user = interaction.get("member", {}).get("user", {}).get("username", "Unknown")
+    
+    parts = custom_id.split(":")
+    if len(parts) != 2 or parts[0] != "classify_split":
+        return json_response(4, "Invalid selection.")
+        
+    txn_id = parts[1]
+    
+    return _process_update(interaction, txn_id, classification, user, percentage)
 
 def handle_button_click(interaction):
     data = interaction.get("data", {})
@@ -44,23 +81,21 @@ def handle_button_click(interaction):
     txn_id = parts[1]
     classification = parts[2]
     
+    return _process_update(interaction, txn_id, classification, user, None)
+
+def _process_update(interaction, txn_id, classification, user, percentage):
     # Update DB
-    # We pass the Discord username as 'classified_by'. 
-    # Ideally we map this to configured names, but for simplicity we use the Discord name 
-    # or just rely on the button choice (since buttons are labeled with names).
-    # Actually, storage expects "Chris" or "Caro". 
-    # Let's use the button value 'A' or 'B' to lookup the configured name if we want consistency,
-    # OR just pass the user who clicked it.
-    
-    # Let's map A/B back to names for the confirmation message
     config_users = read_users()
     display_cls = "Shared"
+    
     if classification == "A":
         display_cls = config_users["user_a"]["name"]
     elif classification == "B":
         display_cls = config_users["user_b"]["name"]
+    elif classification == "S" and percentage:
+        display_cls = f"Shared ({percentage}/{100-percentage})"
         
-    updated = update_transaction(txn_id, classification, user, None)
+    updated = update_transaction(txn_id, classification, user, percentage)
     
     # Extract original message content to parse Merchant/Amount
     # Original format: "**New Transaction**\nMerchant: {merchant}\nAmount: ${amount}\nDate: {date}"
@@ -78,9 +113,9 @@ def handle_button_click(interaction):
         pass
 
     if updated:
-        return json_response(7, f"✅ {summary_text} Classified as **{display_cls}** by {user}", components=[])
+        return json_response(7, f"{summary_text} ✅ Classified as **{display_cls}** by {user}", components=[])
     else:
-        return json_response(7, f"⚠️ {summary_text}  Already classified", components=[])
+        return json_response(7, f"{summary_text} ⚠️ Already classified", components=[])
 
 def json_response(type_code, content, components=None):
     data = {"content": content}

@@ -41,7 +41,7 @@ def test_webhook_button_click_success(mocker, env_setup):
         "headers": {"x-signature-ed25519": "sig", "x-signature-timestamp": "ts"},
         "body": json.dumps({
             "type": 3, # MESSAGE_COMPONENT
-            "data": {"custom_id": "classify:tx1:S"},
+            "data": {"custom_id": "classify:tx1:S", "component_type": 2},
             "member": {"user": {"username": "Chris"}}
         })
     }
@@ -64,7 +64,7 @@ def test_webhook_button_click_already_classified(mocker, env_setup):
         "headers": {"x-signature-ed25519": "sig", "x-signature-timestamp": "ts"},
         "body": json.dumps({
             "type": 3, 
-            "data": {"custom_id": "classify:tx1:S"},
+            "data": {"custom_id": "classify:tx1:S", "component_type": 2},
             "member": {"user": {"username": "Chris"}}
         })
     }
@@ -73,3 +73,27 @@ def test_webhook_button_click_already_classified(mocker, env_setup):
     assert response["statusCode"] == 200
     body = json.loads(response["body"])
     assert "Already classified" in body["data"]["content"]
+
+def test_webhook_select_menu_success(mocker, env_setup):
+    mocker.patch("lambdas.webhook.verify_discord_signature", return_value=True)
+    mock_update = mocker.patch("lambdas.webhook.update_transaction", return_value=True)
+    
+    event = {
+        "headers": {"x-signature-ed25519": "sig", "x-signature-timestamp": "ts"},
+        "body": json.dumps({
+            "type": 3, 
+            "data": {
+                "custom_id": "classify_split:tx1",
+                "component_type": 3, # Select Menu
+                "values": ["S70"]
+            },
+            "member": {"user": {"username": "Chris"}}
+        })
+    }
+    
+    response = handler(event, None)
+    assert response["statusCode"] == 200
+    body = json.loads(response["body"])
+    assert "Shared (70/30)" in body["data"]["content"]
+    
+    mock_update.assert_called_with("tx1", "S", "Chris", 70)

@@ -78,11 +78,18 @@ def create_button(label: str, custom_id: str, style: int = 1) -> dict:
         "custom_id": custom_id
     }
 
+def create_select_menu(custom_id: str, options: list, placeholder: str = "Select...") -> dict:
+    """Helper to create a Select Menu component."""
+    return {
+        "type": 3, # String Select
+        "custom_id": custom_id,
+        "options": options,
+        "placeholder": placeholder
+    }
+
 def send_transaction_notification(transactions: list[dict]) -> bool:
     """
-    Sends a notification with interactive buttons for each unclassified transaction.
-    Since Discord has a limit on message size and components, we'll send one message per transaction
-    to keep it clean and allow specific "Reply" buttons for that transaction.
+    Sends a notification with interactive buttons and dropdown for each unclassified transaction.
     """
     success = True
     config = get_config()
@@ -98,17 +105,34 @@ def send_transaction_notification(transactions: list[dict]) -> bool:
         
         content = f"**New Transaction**\nMerchant: {merchant}\nAmount: ${amount}\nDate: {date}"
         
-        # Create buttons for this specific transaction
-        # Custom ID format: "action:txn_id:value"
-        # e.g., "classify:plaid_123:S"
+        # Row 1: Quick Buttons
         buttons = [
-            create_button("Shared (50/50)", f"classify:{txn_id}:S", 1),
+            create_button("Shared (50/50)", f"classify:{txn_id}:S", 3), # Green
             create_button(f"{user_a}", f"classify:{txn_id}:A", 2),
             create_button(f"{user_b}", f"classify:{txn_id}:B", 2)
         ]
         
-        # We can add more complex split options later if needed, but 3 buttons is a good start.
-        components = [create_action_row(buttons)]
+        # Row 2: Custom Split Dropdown
+        # We assume "S" type, pass percentage in value
+        select_options = []
+        for pct in [60, 65, 70, 75]:
+            select_options.append({
+                "label": f"You pay {pct}%",
+                "value": f"S{pct}", # S60, S65...
+                "description": f"Split: {pct}/{100-pct}"
+            })
+            
+        select_menu = create_select_menu(
+            custom_id=f"classify_split:{txn_id}", 
+            options=select_options,
+            placeholder="Custom Split (You pay %)..."
+        )
+        
+        # Discord allows up to 5 rows
+        components = [
+            create_action_row(buttons),
+            create_action_row([select_menu]) # Select menu needs its own row
+        ]
         
         if not send_message(content, config.discord_classifications_channel_id, components):
             success = False
