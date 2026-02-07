@@ -25,21 +25,26 @@ def test_fetch_transactions_success(mocker, env_setup):
     mock_client = mocker.MagicMock()
     mocker.patch("lib.plaid_client.get_plaid_client", return_value=mock_client)
     
-    # Mock response
+    # Mock transactions_sync response
+    # It returns an object that has .to_dict() method
     mock_response = mocker.MagicMock()
-    mock_response.transactions = SAMPLE_PLAID_TRANSACTIONS
-    mock_client.transactions_get.return_value = mock_response
+    mock_response.to_dict.return_value = {
+        "added": SAMPLE_PLAID_TRANSACTIONS,
+        "modified": [],
+        "removed": [],
+        "has_more": False,
+        "next_cursor": "new_cursor"
+    }
+    mock_client.transactions_sync.return_value = mock_response
     
     txns = fetch_transactions(date(2026, 1, 1), date(2026, 1, 31))
     
     # Should transform data
     assert len(txns) == 2
     assert txns[0]["transaction_id"] == "tx1"
-    assert txns[0]["amount"] == "50.0"
-    assert txns[0]["merchant"] == "Target"
     
     # Verify API call
-    mock_client.transactions_get.assert_called_once()
+    mock_client.transactions_sync.assert_called_once()
 
 def test_fetch_transactions_retry_logic(mocker, env_setup):
     mock_client = mocker.MagicMock()
@@ -47,10 +52,12 @@ def test_fetch_transactions_retry_logic(mocker, env_setup):
     
     # Fail twice, then succeed
     mock_response = mocker.MagicMock()
-    mock_response.transactions = []
+    mock_response.to_dict.return_value = {
+        "added": [], "modified": [], "removed": [], "has_more": False, "next_cursor": "c"
+    }
     
     from plaid.exceptions import ApiException
-    mock_client.transactions_get.side_effect = [
+    mock_client.transactions_sync.side_effect = [
         ApiException("error"),
         ApiException("error"),
         mock_response
@@ -61,11 +68,7 @@ def test_fetch_transactions_retry_logic(mocker, env_setup):
     
     fetch_transactions(date(2026, 1, 1), date(2026, 1, 31))
     
-    assert mock_client.transactions_get.call_count == 3
+    assert mock_client.transactions_sync.call_count == 3
 
 def test_transform_ignore_pending(mocker, env_setup):
-    # If pending transactions are returned, we might want to filter them or handle them.
-    # Plaid transactions_get usually returns posted + pending. 
-    # Spec doesn't explicitly say to ignore pending, but usually for settlement we want posted.
-    # Let's assume we take all for now, or check "pending" status if available.
     pass

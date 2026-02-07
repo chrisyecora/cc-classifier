@@ -51,16 +51,15 @@ def env_setup(monkeypatch):
     env_vars = {
         "ENVIRONMENT": "test",
         "S3_BUCKET": "test-bucket",
-        "TWILIO_ACCOUNT_SID": "ACtest",
-        "TWILIO_AUTH_TOKEN": "authtest",
-        "TWILIO_PHONE_NUMBER": "+15550000000",
+        "DISCORD_BOT_TOKEN": "test_bot_token",
+        "DISCORD_PUBLIC_KEY": "00" * 32, # 32 bytes hex string (64 chars)
+        "DISCORD_CLASSIFICATIONS_CHANNEL_ID": "111",
+        "DISCORD_SETTLEMENTS_CHANNEL_ID": "222",
         "PLAID_CLIENT_ID": "plaidtest",
         "PLAID_SECRET": "plaidsecret",
         "PLAID_ACCESS_TOKEN": "access-sandbox-123",
         "USER_A_NAME": "TestAlex",
-        "USER_A_PHONE": "+15551111111",
         "USER_B_NAME": "TestBeth",
-        "USER_B_PHONE": "+15552222222",
     }
     for k, v in env_vars.items():
         monkeypatch.setenv(k, v)

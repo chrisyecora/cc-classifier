@@ -6,37 +6,48 @@ from dataclasses import dataclass
 class Config:
     environment: str
     s3_bucket: str
-    twilio_account_sid: str
-    twilio_auth_token: str
-    twilio_phone_number: str
+    
+    # Discord
+    discord_bot_token: str
+    discord_public_key: str
+    discord_classifications_channel_id: str
+    discord_settlements_channel_id: str
+    
+    # Plaid
     plaid_client_id: str
     plaid_secret: str
     plaid_access_token: str
     plaid_env: str
+    
+    # Users
     user_a_name: str
-    user_a_phone: str
     user_b_name: str
-    user_b_phone: str
 
 _config: Config | None = None
 
 def get_config() -> Config:
     global _config
     if _config is None:
+        def get_env(key, default=""):
+            val = os.environ.get(key, default)
+            return val.strip() if val else val
+
         _config = Config(
-            environment=os.environ.get("ENVIRONMENT", "dev"),
-            s3_bucket=os.environ.get("S3_BUCKET", ""),
-            twilio_account_sid=os.environ.get("TWILIO_ACCOUNT_SID", ""),
-            twilio_auth_token=os.environ.get("TWILIO_AUTH_TOKEN", ""),
-            twilio_phone_number=os.environ.get("TWILIO_PHONE_NUMBER", ""),
-            plaid_client_id=os.environ.get("PLAID_CLIENT_ID", ""),
-            plaid_secret=os.environ.get("PLAID_SECRET", ""),
-            plaid_access_token=os.environ.get("PLAID_ACCESS_TOKEN", ""),
-            plaid_env=os.environ.get("PLAID_ENV", "sandbox"),
-            user_a_name=os.environ.get("USER_A_NAME", "Alex"),
-            user_a_phone=os.environ.get("USER_A_PHONE", ""),
-            user_b_name=os.environ.get("USER_B_NAME", "Beth"),
-            user_b_phone=os.environ.get("USER_B_PHONE", ""),
+            environment=get_env("ENVIRONMENT", "dev"),
+            s3_bucket=get_env("S3_BUCKET", ""),
+            
+            discord_bot_token=get_env("DISCORD_BOT_TOKEN", ""),
+            discord_public_key=get_env("DISCORD_PUBLIC_KEY", ""),
+            discord_classifications_channel_id=get_env("DISCORD_CLASSIFICATIONS_CHANNEL_ID", ""),
+            discord_settlements_channel_id=get_env("DISCORD_SETTLEMENTS_CHANNEL_ID", ""),
+            
+            plaid_client_id=get_env("PLAID_CLIENT_ID", ""),
+            plaid_secret=get_env("PLAID_SECRET", ""),
+            plaid_access_token=get_env("PLAID_ACCESS_TOKEN", ""),
+            plaid_env=get_env("PLAID_ENV", "sandbox"),
+            
+            user_a_name=get_env("USER_A_NAME", "Alex"),
+            user_b_name=get_env("USER_B_NAME", "Beth"),
         )
     return _config
 

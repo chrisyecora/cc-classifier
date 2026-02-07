@@ -20,12 +20,12 @@
 
 ### Architecture Structure
 *   `lambdas/`: AWS Lambda function handlers (`daily_scan.py`, `webhook.py`).
-*   `lib/`: Core business logic and clients (`plaid_client.py`, `twilio_client.py`, `storage.py`, `parser.py`, `settlement.py`).
+*   `lib/`: Core business logic and clients (`plaid_client.py`, `discord_client.py`, `storage.py`, `settlement.py`).
 *   `tests/`: Unit and integration tests.
 *   `config.py`: Environment variable management.
 
 ### Key Workflows
-*   **Transaction Flow:** Plaid -> Lambda (Daily) -> S3 CSV -> Twilio SMS -> User Reply -> Twilio Webhook -> Lambda -> Update S3 CSV.
+*   **Transaction Flow:** Plaid -> Lambda (Daily) -> S3 CSV -> Discord Webhook -> User Button Click -> Discord Interaction -> Lambda -> Update S3 CSV.
 *   **Settlement:** Monthly calculation (10th-9th billing cycle) triggered by EventBridge.
 
 ## Building & Running

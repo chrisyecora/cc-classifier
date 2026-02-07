@@ -129,19 +129,6 @@ def get_transactions_for_statement_period(settlement_date: date) -> list[dict]:
 def read_users() -> dict[str, dict]:
     config = get_config()
     return {
-        "user_a": {"name": config.user_a_name, "phone": config.user_a_phone},
-        "user_b": {"name": config.user_b_name, "phone": config.user_b_phone}
+        "user_a": {"name": config.user_a_name},
+        "user_b": {"name": config.user_b_name}
     }
-
-def get_user_by_phone(phone: str) -> dict | None:
-    users = read_users()
-    for uid, data in users.items():
-        if data["phone"] == phone:
-            return {"id": uid, **data}
-    return None
-
-def get_other_user(user_id: str) -> dict:
-    users = read_users()
-    if user_id == "user_a":
-        return {"id": "user_b", **users["user_b"]}
-    return {"id": "user_a", **users["user_a"]}

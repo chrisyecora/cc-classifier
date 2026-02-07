@@ -1,20 +1,30 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Credit Card Tracker - SMS-based expense classification
+Description: Credit Card Tracker - Discord-based expense classification
 
 Parameters:
   Environment:
     Type: String
     Default: dev
     AllowedValues: [dev, prod]
-  TwilioAccountSid:
+    
+  # Discord Configuration
+  DiscordBotToken:
     Type: String
     NoEcho: true
-  TwilioAuthToken:
+    Description: Bot Token from Discord Developer Portal
+  DiscordPublicKey:
     Type: String
     NoEcho: true
-  TwilioPhoneNumber:
+    Description: Public Key from Discord Developer Portal
+  DiscordClassificationsChannelId:
     Type: String
+    Description: Channel ID for transaction classification
+  DiscordSettlementsChannelId:
+    Type: String
+    Description: Channel ID for monthly settlements
+    
+  # Plaid Configuration
   PlaidClientId:
     Type: String
     NoEcho: true
@@ -24,36 +34,41 @@ Parameters:
   PlaidAccessToken:
     Type: String
     NoEcho: true
+  PlaidEnv:
+    Type: String
+    Default: sandbox
+    AllowedValues: [sandbox, development, production]
+    
+  # User Configuration
   UserAName:
     Type: String
     Default: Alex
-  UserAPhone:
-    Type: String
   UserBName:
     Type: String
     Default: Beth
-  UserBPhone:
-    Type: String
 
 Globals:
   Function:
-    Runtime: python3.14
+    Runtime: python3.11
     Timeout: 30
     MemorySize: 256
     Environment:
       Variables:
         ENVIRONMENT: !Ref Environment
         S3_BUCKET: !Ref TransactionsBucket
-        TWILIO_ACCOUNT_SID: !Ref TwilioAccountSid
-        TWILIO_AUTH_TOKEN: !Ref TwilioAuthToken
-        TWILIO_PHONE_NUMBER: !Ref TwilioPhoneNumber
+        
+        DISCORD_BOT_TOKEN: !Ref DiscordBotToken
+        DISCORD_PUBLIC_KEY: !Ref DiscordPublicKey
+        DISCORD_CLASSIFICATIONS_CHANNEL_ID: !Ref DiscordClassificationsChannelId
+        DISCORD_SETTLEMENTS_CHANNEL_ID: !Ref DiscordSettlementsChannelId
+        
         PLAID_CLIENT_ID: !Ref PlaidClientId
         PLAID_SECRET: !Ref PlaidSecret
         PLAID_ACCESS_TOKEN: !Ref PlaidAccessToken
+        PLAID_ENV: !Ref PlaidEnv
+        
         USER_A_NAME: !Ref UserAName
-        USER_A_PHONE: !Ref UserAPhone
         USER_B_NAME: !Ref UserBName
-        USER_B_PHONE: !Ref UserBPhone
 
 Resources:
   TransactionsBucket:
@@ -97,16 +112,16 @@ Resources:
         - S3CrudPolicy:
             BucketName: !Ref TransactionsBucket
       Events:
-        TwilioWebhook:
+        DiscordWebhook:
           Type: Api
           Properties:
-            Path: /sms
+            Path: /discord
             Method: POST
 
 Outputs:
-  WebhookUrl:
-    Description: Twilio webhook URL
-    Value: !Sub https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/sms
+  InteractionsEndpointUrl:
+    Description: URL to paste into Discord Developer Portal -> General Information -> Interactions Endpoint URL
+    Value: !Sub https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/discord
   S3Bucket:
     Description: S3 bucket for transaction data
     Value: !Ref TransactionsBucket
