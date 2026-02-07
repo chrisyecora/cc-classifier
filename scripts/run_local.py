@@ -56,35 +56,49 @@ def main():
             traceback.print_exc()
 
     elif command == "webhook":
-        if len(sys.argv) < 4:
-            print("Usage: python scripts/run_local.py webhook <phone_number> <message>")
-            print("Example: python scripts/run_local.py webhook +15551234567 '1S'")
+        if len(sys.argv) < 3:
+            print("Usage: python scripts/run_local.py webhook <custom_id>")
+            print("Example: python scripts/run_local.py webhook 'classify:tx123:S'")
             return
             
-        phone = sys.argv[2]
-        body = sys.argv[3]
+        custom_id = sys.argv[2]
         
-        print(f"--- Running Webhook (Local) ---")
-        print(f"From: {phone}")
-        print(f"Body: {body}")
+        print(f"--- Running Webhook (Local Discord Interaction) ---")
+        print(f"Custom ID: {custom_id}")
         
-        # Construct event matching API Gateway/Twilio
-        from urllib.parse import quote
-        encoded_body = f"Body={quote(body)}&From={quote(phone)}"
+        import json
+        # Construct Discord Interaction JSON
+        body_json = {
+            "type": 3, # MESSAGE_COMPONENT
+            "data": {"custom_id": custom_id},
+            "member": {"user": {"username": "LocalTester"}}
+        }
         
         event = {
-            "body": encoded_body,
+            "headers": {
+                "x-signature-ed25519": "mock_sig",
+                "x-signature-timestamp": "mock_ts"
+            },
+            "body": json.dumps(body_json),
             "isBase64Encoded": False
         }
+        
+        # Mock signature verification for local run
+        import lambdas.webhook
+        original_verify = lambdas.webhook.verify_discord_signature
+        lambdas.webhook.verify_discord_signature = lambda s, t, b: True
         
         try:
             response = webhook_handler(event, None)
             print("\nResponse:")
-            print(response)
+            print(json.dumps(response, indent=2))
         except Exception as e:
             print(f"\nError running webhook: {e}")
             import traceback
             traceback.print_exc()
+        finally:
+            # Restore verification
+            lambdas.webhook.verify_discord_signature = original_verify
 
     else:
         print(f"Unknown command: {command}")

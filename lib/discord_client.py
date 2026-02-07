@@ -20,6 +20,8 @@ def verify_discord_signature(signature: str, timestamp: str, body: str) -> bool:
     except BadSignatureError:
         return False
 
+import time
+
 def send_message(content: str, channel_id: str, components: list = None) -> bool:
     """Sends a message to the specified Discord channel."""
     config = get_config()
@@ -41,7 +43,17 @@ def send_message(content: str, channel_id: str, components: list = None) -> bool
         
     try:
         response = requests.post(url, headers=headers, json=payload)
+        
+        # Handle Rate Limit
+        if response.status_code == 429:
+            retry_after = response.json().get('retry_after', 1)
+            print(f"Rate limited. Waiting {retry_after}s...")
+            time.sleep(retry_after + 0.1)
+            # Retry once
+            response = requests.post(url, headers=headers, json=payload)
+            
         response.raise_for_status()
+        time.sleep(0.5) # Basic throttle to be nice
         return True
     except Exception as e:
         print(f"Error sending Discord message: {e}")

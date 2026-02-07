@@ -72,4 +72,4 @@ def test_webhook_button_click_already_classified(mocker, env_setup):
     response = handler(event, None)
     assert response["statusCode"] == 200
     body = json.loads(response["body"])
-    assert "already classified" in body["data"]["content"]
+    assert "Already classified" in body["data"]["content"]

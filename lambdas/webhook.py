@@ -62,10 +62,25 @@ def handle_button_click(interaction):
         
     updated = update_transaction(txn_id, classification, user, None)
     
+    # Extract original message content to parse Merchant/Amount
+    # Original format: "**New Transaction**\nMerchant: {merchant}\nAmount: ${amount}\nDate: {date}"
+    original_content = interaction.get("message", {}).get("content", "")
+    
+    # Simple parse attempt (fallback to generic if parse fails)
+    summary_text = f"Transaction {txn_id}"
+    try:
+        lines = original_content.split('\n')
+        merchant = next((l.split(": ")[1] for l in lines if l.startswith("Merchant:")), "Unknown")
+        amount = next((l.split(": ")[1] for l in lines if l.startswith("Amount:")), "?")
+        date = next((l.split(": ")[1] for l in lines if l.startswith("Date:")), "")
+        summary_text = f"{merchant} {amount} ({date})"
+    except Exception:
+        pass
+
     if updated:
-        return json_response(7, f"✅ Classified as **{display_cls}** by {user}.", components=[])
+        return json_response(7, f"✅ {summary_text} Classified as **{display_cls}** by {user}", components=[])
     else:
-        return json_response(7, f"⚠️ Transaction already classified.", components=[])
+        return json_response(7, f"⚠️ {summary_text}  Already classified", components=[])
 
 def json_response(type_code, content, components=None):
     data = {"content": content}
