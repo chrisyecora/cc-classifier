@@ -36,6 +36,10 @@ def handler(event, context):
         elif component_type == 3:
             return handle_select_menu(interaction)
             
+    # 5 = MODAL_SUBMIT
+    if t == 5:
+        return handle_modal_submit(interaction)
+            
     return {"statusCode": 400, "body": "Unknown interaction type"}
 
 def handle_select_menu(interaction):
@@ -68,14 +72,91 @@ def handle_select_menu(interaction):
     
     return _process_update(interaction, txn_id, classification, user, percentage)
 
+def handle_modal_submit(interaction):
+    data = interaction.get("data", {})
+    custom_id = data.get("custom_id", "")
+    user = interaction.get("member", {}).get("user", {}).get("username", "Unknown")
+    
+    # Custom ID: modal_custom_amount:txn_id
+    parts = custom_id.split(":")
+    if len(parts) != 2 or parts[0] != "modal_custom_amount":
+        return json_response(4, "Invalid modal submission.")
+        
+    txn_id = parts[1]
+    
+    # Get input value
+    # Components structure: data -> components -> [ActionRow] -> components -> [TextInput]
+    try:
+        input_value = data["components"][0]["components"][0]["value"]
+        user_amount = float(input_value)
+    except (KeyError, ValueError):
+        return json_response(4, "Invalid amount format.")
+        
+    # We need total amount to calculate percentage.
+    # Extract from original message? Modal submit event usually contains 'message' object if triggered from message component?
+    # Actually, Type 5 (Modal Submit) interaction might NOT contain the original message object if triggered from a button.
+    # However, Discord documentation says: "message: The message this interaction is attached to (optional)."
+    # If it's missing, we can't calculate %.
+    # BUT: We have the transaction ID. We could read from DB (S3).
+    # Since we are serverless and stateless, reading S3 is safer.
+    
+    from lib.storage import read_transactions
+    all_txns = read_transactions()
+    txn = next((t for t in all_txns if t["transaction_id"] == txn_id), None)
+    
+    if not txn:
+        return json_response(4, "Transaction not found.")
+        
+    total_amount = float(txn["amount"])
+    
+    if user_amount < 0 or user_amount > total_amount:
+        return json_response(4, f"Amount must be between 0 and {total_amount}")
+        
+    # Calculate percentage
+    if total_amount == 0:
+        percentage = 0
+    else:
+        percentage = round((user_amount / total_amount) * 100, 2)
+        
+    # Use standard update
+    return _process_update(interaction, txn_id, "S", user, percentage)
+
 def handle_button_click(interaction):
     data = interaction.get("data", {})
     custom_id = data.get("custom_id", "")
     user = interaction.get("member", {}).get("user", {}).get("username", "Unknown")
     
-    # Format: classify:txn_id:classification
     parts = custom_id.split(":")
-    if len(parts) != 3 or parts[0] != "classify":
+    action = parts[0]
+    
+    if action == "classify_custom_amount":
+        # Return Modal
+        txn_id = parts[1]
+        return {
+            "statusCode": 200,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.dumps({
+                "type": 9, # MODAL
+                "data": {
+                    "custom_id": f"modal_custom_amount:{txn_id}",
+                    "title": "Enter Split Amount",
+                    "components": [{
+                        "type": 1,
+                        "components": [{
+                            "type": 4, # Text Input
+                            "custom_id": "amount_input",
+                            "label": "Amount you pay ($)",
+                            "style": 1, # Short
+                            "placeholder": "e.g. 25.50",
+                            "required": True
+                        }]
+                    }]
+                }
+            })
+        }
+        
+    # Format: classify:txn_id:classification
+    if len(parts) != 3 or action != "classify":
         return json_response(4, "Invalid button action.")
         
     txn_id = parts[1]
@@ -94,12 +175,26 @@ def _process_update(interaction, txn_id, classification, user, percentage):
         display_cls = config_users["user_b"]["name"]
     elif classification == "S" and percentage:
         display_cls = f"Shared ({percentage}/{100-percentage})"
+    
+    # Calculate percentage might return float, format it nicely
+    if isinstance(percentage, float):
+        # If integer-like, show as int
+        if percentage.is_integer():
+            percentage = int(percentage)
+            display_cls = f"Shared ({percentage}/{100-percentage})"
+        else:
+            display_cls = f"Shared ({percentage:.2f}%)"
         
     updated = update_transaction(txn_id, classification, user, percentage)
     
-    # Extract original message content to parse Merchant/Amount
-    # Original format: "**New Transaction**\nMerchant: {merchant}\nAmount: ${amount}\nDate: {date}"
-    original_content = interaction.get("message", {}).get("content", "")
+    # Extract original message content
+    # For Buttons (Type 3): interaction['message'] exists.
+    # For Modals (Type 5): interaction['message'] might exist if triggered from message component.
+    message_obj = interaction.get("message")
+    original_content = message_obj.get("content", "") if message_obj else ""
+    
+    # If missing (sometimes Modals don't pass it fully or structure differs), try to reconstruct or fetch?
+    # For now, we rely on it being present.
     
     # Simple parse attempt (fallback to generic if parse fails)
     summary_text = f"Transaction {txn_id}"

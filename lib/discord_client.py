@@ -109,7 +109,8 @@ def send_transaction_notification(transactions: list[dict]) -> bool:
         buttons = [
             create_button("Shared (50/50)", f"classify:{txn_id}:S", 3), # Green
             create_button(f"{user_a}", f"classify:{txn_id}:A", 2),
-            create_button(f"{user_b}", f"classify:{txn_id}:B", 2)
+            create_button(f"{user_b}", f"classify:{txn_id}:B", 2),
+            create_button("Custom $", f"classify_custom_amount:{txn_id}", 2) # Grey
         ]
         
         # Row 2: Custom Split Dropdown
