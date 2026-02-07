@@ -36,6 +36,38 @@ def main():
             import traceback
             traceback.print_exc()
         
+    elif command == "settle":
+        print("--- Running Settlement (Local) ---")
+        os.environ["IS_DRY_RUN"] = "true"
+        
+        # Simulate monthly event
+        event = {"resources": ["arn:aws:events:rule/MonthlySettlement"]}
+        
+        # Allow overriding date for testing
+        # Usage: python scripts/run_local.py settle 2026-03-01
+        if len(sys.argv) > 2:
+            override_date = sys.argv[2]
+            print(f"Overriding date to: {override_date}")
+            
+            # Monkeypatch date.today()
+            import datetime
+            class MockDate(datetime.date):
+                @classmethod
+                def today(cls):
+                    return cls.fromisoformat(override_date)
+            
+            # Patch in the modules that use date.today()
+            import lambdas.daily_scan
+            lambdas.daily_scan.date = MockDate
+            
+        try:
+            daily_handler(event, None)
+            print("\nSettlement run complete.")
+        except Exception as e:
+            print(f"\nError running settlement: {e}")
+            import traceback
+            traceback.print_exc()
+
     elif command == "plaid-test":
         print("--- Testing Plaid Connection Directly ---")
         from lib.plaid_client import fetch_transactions

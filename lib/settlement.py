@@ -106,11 +106,18 @@ def calculate_settlement(settlement_date: date) -> SettlementResult:
     )
 
 def format_settlement_sms(result: SettlementResult) -> str:
+    import os
+    is_dry_run = os.environ.get("IS_DRY_RUN", "false").lower() == "true"
+    
+    title = f"Settlement ({result.statement_start:%b %d}-{result.statement_end:%b %d})"
+    if is_dry_run:
+        title += " [DRY RUN]"
+        
     msg = (
-        f"Settlement ({result.statement_start:%b %d}-{result.statement_end:%b %d}):\n"
-        f"{result.user_a.user_name}: ${result.user_a.total_owed}\n"
-        f"{result.user_b.user_name}: ${result.user_b.total_owed}"
+        f"**{title}**\n"
+        f"{result.user_a.user_name}: ${result.user_a.total_owed:,.2f}\n"
+        f"{result.user_b.user_name}: ${result.user_b.total_owed:,.2f}"
     )
     if result.unclassified_count > 0:
-        msg += f"\nWARNING: {result.unclassified_count} unclassified items excluded!"
+        msg += f"\n⚠️ WARNING: {result.unclassified_count} unclassified items excluded!"
     return msg
