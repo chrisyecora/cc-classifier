@@ -109,8 +109,19 @@ def handle_modal_submit(interaction):
         
     total_amount = float(txn["amount"])
     
-    if user_amount < 0 or user_amount > total_amount:
-        return json_response(4, f"Amount must be between 0 and {total_amount}")
+    valid = True
+    if total_amount < 0 and user_amount < total_amount:
+        valid = False
+    elif total_amount < 0 and user_amount > 0:
+        valid = False
+    elif total_amount > 0 and user_amount < 0:
+        valid = False
+    elif total_amount > 0 and user_amount > total_amount:
+        valid = False
+
+
+    if not valid:
+        json_response(4, f"Amount must be between 0 and {total_amount}")
         
     # Calculate percentage
     if total_amount == 0:
