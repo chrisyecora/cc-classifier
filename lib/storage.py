@@ -8,7 +8,7 @@ from config import get_config
 # Constants
 CSV_FIELDNAMES = [
     "transaction_id", "date", "amount", "merchant", 
-    "classification", "classified_by", "percentage", "notified_at"
+    "classification", "classified_by", "percentage", "notified_at", "note"
 ]
 CSV_FILENAME = "transactions.csv"
 
@@ -88,6 +88,21 @@ def update_transaction(transaction_id: str, classification: str, classified_by: 
         
     return updated
 
+def update_transaction_note(transaction_id: str, note: str) -> bool:
+    transactions = read_transactions()
+    updated = False
+    
+    for txn in transactions:
+        if txn["transaction_id"] == transaction_id:
+            txn["note"] = note
+            updated = True
+            break
+            
+    if updated:
+        write_transactions(transactions)
+        
+    return updated
+
 def reset_transaction(transaction_id: str) -> bool:
     transactions = read_transactions()
     updated = False
@@ -97,6 +112,7 @@ def reset_transaction(transaction_id: str) -> bool:
             txn["classification"] = ""
             txn["classified_by"] = ""
             txn["percentage"] = ""
+            txn["note"] = ""
             updated = True
             break
             

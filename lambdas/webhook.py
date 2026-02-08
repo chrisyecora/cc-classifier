@@ -1,6 +1,13 @@
 import json
-from lib.discord_client import verify_discord_signature, create_button, create_action_row, build_classification_components
-from lib.storage import update_transaction, read_users, reset_transaction, read_transactions
+from lib.discord_client import (
+    verify_discord_signature, 
+    create_button, 
+    create_action_row, 
+    build_classification_components,
+    build_post_classification_components,
+    build_note_modal
+)
+from lib.storage import update_transaction, read_users, reset_transaction, read_transactions, update_transaction_note
 
 def handler(event, context):
     headers = event.get("headers", {})
@@ -60,6 +67,21 @@ def handle_modal_submit(interaction):
     parts = custom_id.split(":")
     txn_id = parts[1]
     
+    if custom_id.startswith("modal_note"):
+        try:
+            note_content = data["components"][0]["components"][0]["value"]
+        except (KeyError, IndexError):
+            note_content = ""
+            
+        update_transaction_note(txn_id, note_content)
+        
+        # Refresh message
+        all_txns = read_transactions()
+        txn = next((t for t in all_txns if t["transaction_id"] == txn_id), None)
+        if not txn: return json_response(4, "Transaction not found.")
+        
+        return _build_update_response(interaction, txn)
+    
     try:
         input_value = data["components"][0]["components"][0]["value"]
         user_amount = float(input_value)
@@ -94,6 +116,22 @@ def handle_button_click(interaction):
     
     if action == "undo":
         return handle_undo(interaction, parts[1])
+
+    if action == "note":
+        txn_id = parts[1]
+        all_txns = read_transactions()
+        txn = next((t for t in all_txns if t["transaction_id"] == txn_id), None)
+        current_note = txn.get("note", "") if txn else ""
+        
+        modal = build_note_modal(txn_id, current_note)
+        return {
+            "statusCode": 200,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.dumps({
+                "type": 9,
+                "data": modal
+            })
+        }
     
     if action == "classify_custom_amount":
         txn_id = parts[1]
@@ -137,37 +175,61 @@ def handle_undo(interaction, txn_id):
 
 def _process_update(interaction, txn_id, classification, user, percentage):
     config_users = read_users()
-    display_cls = "Shared"
     
+    updated = update_transaction(txn_id, classification, user, percentage)
+    
+    # Reload transaction to get latest state (including note if any)
+    all_txns = read_transactions()
+    txn = next((t for t in all_txns if t["transaction_id"] == txn_id), None)
+    
+    return _build_update_response(interaction, txn, updated, user)
+
+def _build_update_response(interaction, txn, updated=True, action_user=None):
+    if not txn:
+        return json_response(4, "Transaction not found.")
+        
+    config_users = read_users()
+    classification = txn["classification"]
+    classified_by = txn["classified_by"]
+    percentage_str = txn.get("percentage", "")
+    note = txn.get("note", "")
+    
+    display_cls = "Shared"
     if classification == "A":
         display_cls = config_users["user_a"]["name"]
     elif classification == "B":
         display_cls = config_users["user_b"]["name"]
     elif classification == "S":
-        if percentage is not None:
-            display_cls = f"Shared ({percentage}%)"
+        if percentage_str:
+            display_cls = f"Shared ({percentage_str}%)"
         else:
             display_cls = "Shared (50/50)"
-        
-    updated = update_transaction(txn_id, classification, user, percentage)
-    
+            
     message_obj = interaction.get("message")
     original_content = message_obj.get("content", "") if message_obj else ""
-    summary_text = f"Transaction {txn_id}"
-    try:
-        lines = original_content.split('\n')
-        merchant = next((l.split(": ")[1] for l in lines if l.startswith("Merchant:")), "Unknown")
-        amount = next((l.split(": ")[1] for l in lines if l.startswith("Amount:")), "?")
-        date = next((l.split(": ")[1] for l in lines if l.startswith("Date:")), "")
-        summary_text = f"{merchant} {amount} ({date})"
-    except Exception:
-        pass
+    summary_text = f"Transaction {txn['transaction_id']}"
+    
+    # Try to extract original details if available, or use txn data
+    if original_content:
+        try:
+            lines = original_content.split('\n')
+            merchant = next((l.split(": ")[1] for l in lines if l.startswith("Merchant:")), txn.get("merchant", "Unknown"))
+            amount = next((l.split(": ")[1] for l in lines if l.startswith("Amount:")), txn.get("amount", "?"))
+            date = next((l.split(": ")[1] for l in lines if l.startswith("Date:")), txn.get("date", ""))
+            summary_text = f"{merchant} {amount} ({date})"
+        except Exception:
+            pass
+    else:
+        summary_text = f"{txn['merchant']} ${txn['amount']} ({txn['date']})"
 
     if updated:
-        # Include Undo button
-        undo_btn = create_button("Undo", f"undo:{txn_id}", 4) # Red
-        components = [create_action_row([undo_btn])]
-        return json_response(7, f"{summary_text} ✅ Classified as **{display_cls}** by {user}", components=components)
+        components = build_post_classification_components(txn['transaction_id'])
+        
+        content = f"{summary_text} ✅ Classified as **{display_cls}** by {classified_by}"
+        if note:
+            content += f"\n📝 Note: {note}"
+            
+        return json_response(7, content, components=components)
     else:
         return json_response(7, f"{summary_text} ⚠️ Already classified", components=[])
 

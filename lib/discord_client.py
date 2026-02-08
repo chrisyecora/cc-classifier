@@ -125,6 +125,29 @@ def build_classification_components(txn_id: str) -> list:
         create_action_row([select_menu])
     ]
 
+def build_post_classification_components(txn_id: str) -> list:
+    """Builds the buttons displayed after a transaction is classified."""
+    return [create_action_row([
+        create_button("Undo", f"undo:{txn_id}", 4), # Red
+        create_button("Add Note", f"note:{txn_id}", 2) # Secondary (Grey)
+    ])]
+
+def build_note_modal(txn_id: str, current_note: str = "") -> dict:
+    """Builds the modal for adding/editing a note."""
+    return {
+        "title": "Add/Edit Note",
+        "custom_id": f"modal_note:{txn_id}",
+        "components": [create_action_row([{
+            "type": 4, # Text Input
+            "custom_id": "note_input",
+            "label": "Note",
+            "style": 2, # Paragraph
+            "value": current_note,
+            "required": False,
+            "max_length": 200
+        }])]
+    }
+
 def send_transaction_notification(transactions: list[dict]) -> bool:
     """
     Sends a notification with interactive buttons and dropdown for each unclassified transaction.
