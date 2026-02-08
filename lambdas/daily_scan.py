@@ -1,8 +1,10 @@
-from datetime import date, timedelta
-from lib.plaid_client import fetch_transactions
+from datetime import date
+from lib.plaid_client import fetch_new_transactions
 from lib.storage import (
     append_transactions, 
-    get_unclassified_transactions
+    get_unclassified_transactions,
+    get_cursor,
+    save_cursor
 )
 from lib.discord_client import send_transaction_notification, send_settlement_notification
 from lib.settlement import calculate_settlement, format_settlement_sms
@@ -23,17 +25,28 @@ def handler(event, context):
         _handle_daily_scan()
 
 def _handle_daily_scan():
-    today = date.today()
-    # Fetch previous day (or last 2 days to be safe)
-    start_date = today - timedelta(days=2)
+    # Cursor-based sync
+    cursor = get_cursor()
     
-    transactions = fetch_transactions(start_date, today)
+    # fetch_new_transactions handles the logic of "if cursor is None, fetch all but keep recent"
+    transactions, new_cursor = fetch_new_transactions(cursor)
+    
     if not transactions:
-        print("No transactions fetched.")
+        print("No new transactions fetched.")
+        # Even if no transactions, we must save the new cursor to advance state!
+        # (Unless API failed, but here we assume success)
+        if new_cursor and new_cursor != cursor:
+            save_cursor(new_cursor)
+            print(f"Updated cursor: {new_cursor}")
         return
         
     added = append_transactions(transactions)
     print(f"Added {added} new transactions.")
+    
+    # Save cursor after successful append
+    if new_cursor:
+        save_cursor(new_cursor)
+        print(f"Saved new cursor: {new_cursor}")
     
     unclassified = get_unclassified_transactions()
     if unclassified:
@@ -44,12 +57,7 @@ def _handle_daily_scan():
 
 def _handle_monthly_settlement():
     today = date.today()
-    # Calculate for the statement period ending last month (usually)
-    # The logic in settlement.py handles period calculation based on settlement date.
-    
+    # Calculate for the statement period ending last month
     result = calculate_settlement(today)
-    
-    # Using format_settlement_sms but for Discord message
     msg = format_settlement_sms(result)
-    
     send_settlement_notification(msg)

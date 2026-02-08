@@ -132,3 +132,46 @@ def read_users() -> dict[str, dict]:
         "user_a": {"name": config.user_a_name},
         "user_b": {"name": config.user_b_name}
     }
+
+def get_user_by_phone(phone: str) -> dict | None:
+    users = read_users()
+    for uid, data in users.items():
+        if data["phone"] == phone:
+            return {"id": uid, **data}
+    return None
+
+def get_other_user(user_id: str) -> dict:
+    users = read_users()
+    if user_id == "user_a":
+        return {"id": "user_b", **users["user_b"]}
+    return {"id": "user_a", **users["user_a"]}
+
+# --- Cursor Management ---
+CURSOR_FILENAME = "plaid_cursor.txt"
+
+def get_cursor() -> str | None:
+    config = get_config()
+    s3 = get_s3_client()
+    
+    try:
+        response = s3.get_object(Bucket=config.s3_bucket, Key=CURSOR_FILENAME)
+        content = response["Body"].read().decode("utf-8").strip()
+        return content if content else None
+    except Exception as e:
+        if "NoSuchKey" in str(e):
+            return None
+        raise e
+
+def save_cursor(cursor: str) -> None:
+    if not cursor:
+        return
+        
+    config = get_config()
+    s3 = get_s3_client()
+    
+    s3.put_object(
+        Bucket=config.s3_bucket,
+        Key=CURSOR_FILENAME,
+        Body=cursor.encode("utf-8"),
+        ContentType="text/plain"
+    )
