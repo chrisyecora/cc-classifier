@@ -88,6 +88,23 @@ def update_transaction(transaction_id: str, classification: str, classified_by: 
         
     return updated
 
+def reset_transaction(transaction_id: str) -> bool:
+    transactions = read_transactions()
+    updated = False
+    
+    for txn in transactions:
+        if txn["transaction_id"] == transaction_id:
+            txn["classification"] = ""
+            txn["classified_by"] = ""
+            txn["percentage"] = ""
+            updated = True
+            break
+            
+    if updated:
+        write_transactions(transactions)
+        
+    return updated
+
 def get_unclassified_transactions() -> list[dict]:
     txns = read_transactions()
     return [t for t in txns if not t["classification"]]

@@ -1,10 +1,9 @@
 import json
-from lib.discord_client import verify_discord_signature
-from lib.storage import update_transaction, read_users
+from lib.discord_client import verify_discord_signature, create_button, create_action_row, build_classification_components
+from lib.storage import update_transaction, read_users, reset_transaction, read_transactions
 
 def handler(event, context):
     headers = event.get("headers", {})
-    # API Gateway might lowercase headers or not
     signature = headers.get("x-signature-ed25519") or headers.get("X-Signature-Ed25519")
     timestamp = headers.get("x-signature-timestamp") or headers.get("X-Signature-Timestamp")
     body = event.get("body", "")
@@ -18,56 +17,37 @@ def handler(event, context):
     interaction = json.loads(body)
     t = interaction.get("type")
     
-    # 1 = PING
-    if t == 1:
-        return {
-            "statusCode": 200,
-            "body": json.dumps({"type": 1})
-        }
+    if t == 1: # PING
+        return {"statusCode": 200, "body": json.dumps({"type": 1})}
         
-    # 3 = MESSAGE_COMPONENT (Button click or Select Menu)
-    if t == 3:
+    if t == 3: # MESSAGE_COMPONENT
         data = interaction.get("data", {})
         component_type = data.get("component_type")
-        
-        # 2 = Button, 3 = Select Menu
         if component_type == 2:
             return handle_button_click(interaction)
         elif component_type == 3:
             return handle_select_menu(interaction)
             
-    # 5 = MODAL_SUBMIT
-    if t == 5:
+    if t == 5: # MODAL_SUBMIT
         return handle_modal_submit(interaction)
             
     return {"statusCode": 400, "body": "Unknown interaction type"}
 
 def handle_select_menu(interaction):
     data = interaction.get("data", {})
-    # Custom ID: classify_split:txn_id
     custom_id = data.get("custom_id", "")
-    # Values: ["S70"]
     values = data.get("values", [])
+    if not values: return json_response(4, "No value selected.")
     
-    if not values:
-        return json_response(4, "No value selected.")
-        
-    value = values[0] # e.g. "S70"
-    
-    # Extract classification and percentage
-    # S70 -> cls=S, pct=70
+    value = values[0]
     classification = value[0]
     try:
-        percentage = int(value[1:])
+        percentage = float(value[1:])
     except ValueError:
         percentage = None
         
     user = interaction.get("member", {}).get("user", {}).get("username", "Unknown")
-    
     parts = custom_id.split(":")
-    if len(parts) != 2 or parts[0] != "classify_split":
-        return json_response(4, "Invalid selection.")
-        
     txn_id = parts[1]
     
     return _process_update(interaction, txn_id, classification, user, percentage)
@@ -77,59 +57,31 @@ def handle_modal_submit(interaction):
     custom_id = data.get("custom_id", "")
     user = interaction.get("member", {}).get("user", {}).get("username", "Unknown")
     
-    # Custom ID: modal_custom_amount:txn_id
     parts = custom_id.split(":")
-    if len(parts) != 2 or parts[0] != "modal_custom_amount":
-        return json_response(4, "Invalid modal submission.")
-        
     txn_id = parts[1]
     
-    # Get input value
-    # Components structure: data -> components -> [ActionRow] -> components -> [TextInput]
     try:
         input_value = data["components"][0]["components"][0]["value"]
         user_amount = float(input_value)
     except (KeyError, ValueError):
         return json_response(4, "Invalid amount format.")
         
-    # We need total amount to calculate percentage.
-    # Extract from original message? Modal submit event usually contains 'message' object if triggered from message component?
-    # Actually, Type 5 (Modal Submit) interaction might NOT contain the original message object if triggered from a button.
-    # However, Discord documentation says: "message: The message this interaction is attached to (optional)."
-    # If it's missing, we can't calculate %.
-    # BUT: We have the transaction ID. We could read from DB (S3).
-    # Since we are serverless and stateless, reading S3 is safer.
-    
-    from lib.storage import read_transactions
     all_txns = read_transactions()
     txn = next((t for t in all_txns if t["transaction_id"] == txn_id), None)
-    
-    if not txn:
-        return json_response(4, "Transaction not found.")
+    if not txn: return json_response(4, "Transaction not found.")
         
     total_amount = float(txn["amount"])
     
     valid = True
-    # For Credits (negative total), user amount must be between total and 0 (e.g. -50 <= -20 <= 0)
     if total_amount < 0:
-        if user_amount < total_amount or user_amount > 0:
-            valid = False
-            
-    # For Expenses (positive total), user amount must be between 0 and total (e.g. 0 <= 20 <= 50)
+        if user_amount < total_amount or user_amount > 0: valid = False
     else:
-        if user_amount < 0 or user_amount > total_amount:
-            valid = False
+        if user_amount < 0 or user_amount > total_amount: valid = False
 
     if not valid:
         return json_response(4, f"Amount must be between 0 and {total_amount}")
         
-    # Calculate percentage
-    if total_amount == 0:
-        percentage = 0
-    else:
-        percentage = round((user_amount / total_amount) * 100, 2)
-        
-    # Use standard update
+    percentage = round((user_amount / total_amount) * 100, 2) if total_amount != 0 else 0
     return _process_update(interaction, txn_id, "S", user, percentage)
 
 def handle_button_click(interaction):
@@ -140,24 +92,26 @@ def handle_button_click(interaction):
     parts = custom_id.split(":")
     action = parts[0]
     
+    if action == "undo":
+        return handle_undo(interaction, parts[1])
+    
     if action == "classify_custom_amount":
-        # Return Modal
         txn_id = parts[1]
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json"},
             "body": json.dumps({
-                "type": 9, # MODAL
+                "type": 9,
                 "data": {
                     "custom_id": f"modal_custom_amount:{txn_id}",
                     "title": "Enter Split Amount",
                     "components": [{
                         "type": 1,
                         "components": [{
-                            "type": 4, # Text Input
+                            "type": 4,
                             "custom_id": "amount_input",
                             "label": "Amount you pay ($)",
-                            "style": 1, # Short
+                            "style": 1,
                             "placeholder": "e.g. 25.50",
                             "required": True
                         }]
@@ -166,17 +120,22 @@ def handle_button_click(interaction):
             })
         }
         
-    # Format: classify:txn_id:classification
     if len(parts) != 3 or action != "classify":
         return json_response(4, "Invalid button action.")
         
-    txn_id = parts[1]
-    classification = parts[2]
-    
-    return _process_update(interaction, txn_id, classification, user, None)
+    return _process_update(interaction, parts[1], parts[2], user, None)
+
+def handle_undo(interaction, txn_id):
+    if reset_transaction(txn_id):
+        all_txns = read_transactions()
+        txn = next((t for t in all_txns if t["transaction_id"] == txn_id), None)
+        if txn:
+            content = f"**New Transaction**\nMerchant: {txn['merchant']}\nAmount: ${txn['amount']}\nDate: {txn['date']}"
+            components = build_classification_components(txn_id)
+            return json_response(7, content, components)
+    return json_response(4, "Error: Could not undo classification.")
 
 def _process_update(interaction, txn_id, classification, user, percentage):
-    # Update DB
     config_users = read_users()
     display_cls = "Shared"
     
@@ -184,30 +143,16 @@ def _process_update(interaction, txn_id, classification, user, percentage):
         display_cls = config_users["user_a"]["name"]
     elif classification == "B":
         display_cls = config_users["user_b"]["name"]
-    elif classification == "S" and percentage:
-        display_cls = f"Shared ({percentage}/{100-percentage})"
-    
-    # Calculate percentage might return float, format it nicely
-    if isinstance(percentage, float):
-        # If integer-like, show as int
-        if percentage.is_integer():
-            percentage = int(percentage)
-            display_cls = f"Shared ({percentage}/{100-percentage})"
+    elif classification == "S":
+        if percentage is not None:
+            display_cls = f"Shared ({percentage}%)"
         else:
-            display_cls = f"Shared ({percentage:.2f}%)"
+            display_cls = "Shared (50/50)"
         
     updated = update_transaction(txn_id, classification, user, percentage)
     
-    # Extract original message content
-    # For Buttons (Type 3): interaction['message'] exists.
-    # For Modals (Type 5): interaction['message'] might exist if triggered from message component.
     message_obj = interaction.get("message")
     original_content = message_obj.get("content", "") if message_obj else ""
-    
-    # If missing (sometimes Modals don't pass it fully or structure differs), try to reconstruct or fetch?
-    # For now, we rely on it being present.
-    
-    # Simple parse attempt (fallback to generic if parse fails)
     summary_text = f"Transaction {txn_id}"
     try:
         lines = original_content.split('\n')
@@ -219,20 +164,18 @@ def _process_update(interaction, txn_id, classification, user, percentage):
         pass
 
     if updated:
-        return json_response(7, f"{summary_text} ✅ Classified as **{display_cls}** by {user}", components=[])
+        # Include Undo button
+        undo_btn = create_button("Undo", f"undo:{txn_id}", 4) # Red
+        components = [create_action_row([undo_btn])]
+        return json_response(7, f"{summary_text} ✅ Classified as **{display_cls}** by {user}", components=components)
     else:
         return json_response(7, f"{summary_text} ⚠️ Already classified", components=[])
 
 def json_response(type_code, content, components=None):
     data = {"content": content}
-    if components is not None:
-        data["components"] = components
-        
+    if components is not None: data["components"] = components
     return {
         "statusCode": 200,
         "headers": {"Content-Type": "application/json"},
-        "body": json.dumps({
-            "type": type_code,
-            "data": data
-        })
+        "body": json.dumps({"type": type_code, "data": data})
     }

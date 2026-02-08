@@ -73,7 +73,7 @@ def test_webhook_select_menu_success(mocker, env_setup):
 def test_modal_custom_amount_expense(mocker, env_setup):
     """Test valid positive expense logic ($20 of $50)."""
     # Mock reading transaction to get total amount
-    mocker.patch("lib.storage.read_transactions", return_value=[
+    mocker.patch("lambdas.webhook.read_transactions", return_value=[
         {"transaction_id": "tx1", "amount": "50.00"}
     ])
     mock_update = mocker.patch("lambdas.webhook.update_transaction", return_value=True)
@@ -98,7 +98,7 @@ def test_modal_custom_amount_expense(mocker, env_setup):
 
 def test_modal_custom_amount_credit(mocker, env_setup):
     """Test valid negative credit logic (-$20 of -$50)."""
-    mocker.patch("lib.storage.read_transactions", return_value=[
+    mocker.patch("lambdas.webhook.read_transactions", return_value=[
         {"transaction_id": "tx1", "amount": "-50.00"}
     ])
     mock_update = mocker.patch("lambdas.webhook.update_transaction", return_value=True)
@@ -123,7 +123,7 @@ def test_modal_custom_amount_credit(mocker, env_setup):
 
 def test_modal_custom_amount_invalid_expense(mocker, env_setup):
     """Test invalid input > total ($60 of $50)."""
-    mocker.patch("lib.storage.read_transactions", return_value=[
+    mocker.patch("lambdas.webhook.read_transactions", return_value=[
         {"transaction_id": "tx1", "amount": "50.00"}
     ])
     
@@ -145,7 +145,7 @@ def test_modal_custom_amount_invalid_expense(mocker, env_setup):
 
 def test_modal_custom_amount_invalid_credit_mixed_sign(mocker, env_setup):
     """Test invalid input (positive input $20 for credit -$50)."""
-    mocker.patch("lib.storage.read_transactions", return_value=[
+    mocker.patch("lambdas.webhook.read_transactions", return_value=[
         {"transaction_id": "tx1", "amount": "-50.00"}
     ])
     
@@ -165,7 +165,7 @@ def test_modal_custom_amount_invalid_credit_mixed_sign(mocker, env_setup):
 
 def test_modal_custom_amount_invalid_credit_too_large(mocker, env_setup):
     """Test invalid input (-$60 for credit -$50)."""
-    mocker.patch("lib.storage.read_transactions", return_value=[
+    mocker.patch("lambdas.webhook.read_transactions", return_value=[
         {"transaction_id": "tx1", "amount": "-50.00"}
     ])
     

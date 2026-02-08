@@ -87,15 +87,50 @@ def create_select_menu(custom_id: str, options: list, placeholder: str = "Select
         "placeholder": placeholder
     }
 
+def create_undo_button(txn_id: str) -> dict:
+    """Helper to create an Undo button (Red)."""
+    return create_button("Undo", f"undo:{txn_id}", 4)
+
+def build_classification_components(txn_id: str) -> list:
+    """Builds the buttons and select menu for classifying a transaction."""
+    config = get_config()
+    user_a = config.user_a_name
+    user_b = config.user_b_name
+    
+    # Row 1: Quick Buttons
+    buttons = [
+        create_button("Shared (50/50)", f"classify:{txn_id}:S", 3), # Green
+        create_button(f"{user_a}", f"classify:{txn_id}:A", 2),
+        create_button(f"{user_b}", f"classify:{txn_id}:B", 2),
+        create_button("Custom $", f"classify_custom_amount:{txn_id}", 2) # Grey
+    ]
+    
+    # Row 2: Custom Split Dropdown
+    select_options = []
+    for pct in [60, 65, 70, 75]:
+        select_options.append({
+            "label": f"You pay {pct}%",
+            "value": f"S{pct}",
+            "description": f"Split: {pct}/{100-pct}"
+        })
+        
+    select_menu = create_select_menu(
+        custom_id=f"classify_split:{txn_id}", 
+        options=select_options,
+        placeholder="Custom Split (You pay %)..."
+    )
+    
+    return [
+        create_action_row(buttons),
+        create_action_row([select_menu])
+    ]
+
 def send_transaction_notification(transactions: list[dict]) -> bool:
     """
     Sends a notification with interactive buttons and dropdown for each unclassified transaction.
     """
     success = True
     config = get_config()
-    
-    user_a = config.user_a_name
-    user_b = config.user_b_name
     
     for txn in transactions:
         txn_id = txn["transaction_id"]
@@ -104,36 +139,7 @@ def send_transaction_notification(transactions: list[dict]) -> bool:
         date = txn["date"]
         
         content = f"**New Transaction**\nMerchant: {merchant}\nAmount: ${amount}\nDate: {date}"
-        
-        # Row 1: Quick Buttons
-        buttons = [
-            create_button("Shared (50/50)", f"classify:{txn_id}:S", 3), # Green
-            create_button(f"{user_a}", f"classify:{txn_id}:A", 2),
-            create_button(f"{user_b}", f"classify:{txn_id}:B", 2),
-            create_button("Custom $", f"classify_custom_amount:{txn_id}", 2) # Grey
-        ]
-        
-        # Row 2: Custom Split Dropdown
-        # We assume "S" type, pass percentage in value
-        select_options = []
-        for pct in [60, 65, 70, 75]:
-            select_options.append({
-                "label": f"You pay {pct}%",
-                "value": f"S{pct}", # S60, S65...
-                "description": f"Split: {pct}/{100-pct}"
-            })
-            
-        select_menu = create_select_menu(
-            custom_id=f"classify_split:{txn_id}", 
-            options=select_options,
-            placeholder="Custom Split (You pay %)..."
-        )
-        
-        # Discord allows up to 5 rows
-        components = [
-            create_action_row(buttons),
-            create_action_row([select_menu]) # Select menu needs its own row
-        ]
+        components = build_classification_components(txn_id)
         
         if not send_message(content, config.discord_classifications_channel_id, components):
             success = False
