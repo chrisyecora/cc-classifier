@@ -110,18 +110,18 @@ def handle_modal_submit(interaction):
     total_amount = float(txn["amount"])
     
     valid = True
-    if total_amount < 0 and user_amount < total_amount:
-        valid = False
-    elif total_amount < 0 and user_amount > 0:
-        valid = False
-    elif total_amount > 0 and user_amount < 0:
-        valid = False
-    elif total_amount > 0 and user_amount > total_amount:
-        valid = False
-
+    # For Credits (negative total), user amount must be between total and 0 (e.g. -50 <= -20 <= 0)
+    if total_amount < 0:
+        if user_amount < total_amount or user_amount > 0:
+            valid = False
+            
+    # For Expenses (positive total), user amount must be between 0 and total (e.g. 0 <= 20 <= 50)
+    else:
+        if user_amount < 0 or user_amount > total_amount:
+            valid = False
 
     if not valid:
-        json_response(4, f"Amount must be between 0 and {total_amount}")
+        return json_response(4, f"Amount must be between 0 and {total_amount}")
         
     # Calculate percentage
     if total_amount == 0:
