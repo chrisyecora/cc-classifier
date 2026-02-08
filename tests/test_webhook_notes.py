@@ -88,6 +88,19 @@ def test_handle_note_modal_submit(mock_update_note, mocker):
     body = json.loads(response["body"])
     assert body["type"] == 7 # Update Message
     
-    content = body["data"]["content"]
-    assert "📝 Note: New Note Content" in content
-    assert "UserA" in content # Classification info preserved
+    # Content should be empty as we use embeds now
+    assert body["data"].get("content") == ""
+    
+    embeds = body["data"]["embeds"]
+    assert len(embeds) == 1
+    fields = embeds[0]["fields"]
+    
+    # Check for Note field
+    note_field = next((f for f in fields if f["name"] == "Note"), None)
+    assert note_field is not None
+    assert "New Note Content" in note_field["value"]
+    
+    # Check for User info
+    by_field = next((f for f in fields if f["name"] == "By"), None)
+    assert by_field is not None
+    assert "UserA" in by_field["value"]

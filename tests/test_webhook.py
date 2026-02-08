@@ -38,6 +38,12 @@ def test_webhook_button_click_success(mocker):
     response = handler(event, None)
     assert response["statusCode"] == 200
     mock_update.assert_called()
+    
+    body = json.loads(response["body"])
+    assert "embeds" in body["data"]
+    embed = body["data"]["embeds"][0]
+    assert embed["title"] == "Test"
+    assert "Classified As" in embed["fields"][0]["name"]
 
 def test_webhook_button_click_already_classified(mocker):
     mocker.patch("lambdas.webhook.verify_discord_signature", return_value=True)

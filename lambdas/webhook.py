@@ -225,17 +225,32 @@ def _build_update_response(interaction, txn, updated=True, action_user=None):
     if updated:
         components = build_post_classification_components(txn['transaction_id'])
         
-        content = f"{summary_text} ✅ Classified as **{display_cls}** by {classified_by}"
+        embed = {
+            "title": txn['merchant'],
+            "description": f"**${txn['amount']}** on {txn['date']}",
+            "color": 0x57F287, # Green
+            "fields": [
+                {"name": "Classified As", "value": f"**{display_cls}**", "inline": True},
+                {"name": "By", "value": classified_by, "inline": True}
+            ]
+        }
+        
         if note:
-            content += f"\n📝 Note: {note}"
+            embed["fields"].append({"name": "Note", "value": note, "inline": False})
             
-        return json_response(7, content, components=components)
+        return json_response(7, content="", components=components, embeds=[embed])
     else:
         return json_response(7, f"{summary_text} ⚠️ Already classified", components=[])
 
-def json_response(type_code, content, components=None):
-    data = {"content": content}
-    if components is not None: data["components"] = components
+def json_response(type_code, content=None, components=None, embeds=None):
+    data = {}
+    if content is not None:
+        data["content"] = content
+    if components is not None:
+        data["components"] = components
+    if embeds is not None:
+        data["embeds"] = embeds
+        
     return {
         "statusCode": 200,
         "headers": {"Content-Type": "application/json"},
