@@ -46,6 +46,12 @@ Parameters:
   UserBName:
     Type: String
     Default: Beth
+  DiscordUserA:
+    Type: String
+    Description: Discord Username for User A (e.g. chrisy076)
+  DiscordUserB:
+    Type: String
+    Description: Discord Username for User B (e.g. bethy123)
 
 Globals:
   Function:
@@ -69,6 +75,8 @@ Globals:
         
         USER_A_NAME: !Ref UserAName
         USER_B_NAME: !Ref UserBName
+        DISCORD_USER_A: !Ref DiscordUserA
+        DISCORD_USER_B: !Ref DiscordUserB
 
 Resources:
   TransactionsBucket:

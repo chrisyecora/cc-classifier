@@ -22,6 +22,8 @@ class Config:
     # Users
     user_a_name: str
     user_b_name: str
+    discord_user_a: str
+    discord_user_b: str
 
 _config: Config | None = None
 
@@ -48,6 +50,8 @@ def get_config() -> Config:
             
             user_a_name=get_env("USER_A_NAME", "Alex"),
             user_b_name=get_env("USER_B_NAME", "Beth"),
+            discord_user_a=get_env("DISCORD_USER_A", ""),
+            discord_user_b=get_env("DISCORD_USER_B", ""),
         )
     return _config
 

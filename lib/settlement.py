@@ -60,10 +60,10 @@ def calculate_settlement(settlement_date: date) -> SettlementResult:
                 # Real implementation needs robust name matching or ID
                 
                 # Simple name matching for now
-                if classifier == config.user_a_name:
+                if classifier == config.user_a_name or classifier == config.discord_user_a:
                     user_a_total += classifier_share
                     user_b_total += other_share
-                elif classifier == config.user_b_name:
+                elif classifier == config.user_b_name or classifier == config.discord_user_b:
                     user_b_total += classifier_share
                     user_a_total += other_share
                 else:
