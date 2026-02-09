@@ -95,7 +95,7 @@ def main():
             if not transactions:
                 print("No transactions found in this range.")
             else:
-                print(f"Found {len(transactions)} transactions. Saving to S3...")
+                print(f"Found {len(transactions)} transactions. Saving to DynamoDB...")
                 added = append_transactions(transactions)
                 print(f"Added {added} new transactions to storage.")
                 
