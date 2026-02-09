@@ -181,6 +181,31 @@ def main():
             # Restore verification
             lambdas.webhook.verify_discord_signature = original_verify
 
+    elif command == "reset":
+        print("--- Resetting DynamoDB Table (Deleting All Data) ---")
+        confirm = input("Are you sure you want to delete ALL data? (yes/no): ")
+        if confirm.lower() != "yes":
+            print("Aborted.")
+            return
+
+        from lib.storage import get_table, PK_TRX, PK_CONFIG
+        import boto3
+        
+        table = get_table()
+        
+        # Scan and delete
+        # Note: This is inefficient for large tables but fine for dev/testing.
+        scan = table.scan()
+        with table.batch_writer() as batch:
+            for each in scan['Items']:
+                batch.delete_item(
+                    Key={
+                        'pk': each['pk'],
+                        'sk': each['sk']
+                    }
+                )
+        print("Table cleared.")
+
     else:
         print(f"Unknown command: {command}")
 
