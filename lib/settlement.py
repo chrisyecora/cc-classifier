@@ -31,6 +31,9 @@ def calculate_settlement(settlement_date: date) -> SettlementResult:
     unclassified_count = 0
     
     for txn in transactions:
+        if txn.get("excluded") == "true":
+            continue
+
         amount = Decimal(str(txn["amount"]))
         classification = txn["classification"]
         

@@ -7,7 +7,7 @@ from lib.discord_client import (
     build_post_classification_components,
     build_note_modal
 )
-from lib.storage import update_transaction, read_users, reset_transaction, read_transactions, update_transaction_note
+from lib.storage import update_transaction, read_users, reset_transaction, read_transactions, update_transaction_note, exclude_transaction
 
 def handler(event, context):
     headers = event.get("headers", {})
@@ -116,6 +116,9 @@ def handle_button_click(interaction):
     
     if action == "undo":
         return handle_undo(interaction, parts[1])
+        
+    if action == "exclude":
+        return _process_exclude(interaction, parts[1])
 
     if action == "note":
         txn_id = parts[1]
@@ -173,6 +176,13 @@ def handle_undo(interaction, txn_id):
             return json_response(7, content, components)
     return json_response(4, "Error: Could not undo classification.")
 
+def _process_exclude(interaction, txn_id):
+    if exclude_transaction(txn_id):
+        all_txns = read_transactions()
+        txn = next((t for t in all_txns if t["transaction_id"] == txn_id), None)
+        return _build_update_response(interaction, txn)
+    return json_response(4, "Error: Could not exclude transaction.")
+
 def _process_update(interaction, txn_id, classification, user, percentage):
     config_users = read_users()
     
@@ -189,10 +199,11 @@ def _build_update_response(interaction, txn, updated=True, action_user=None):
         return json_response(4, "Transaction not found.")
         
     config_users = read_users()
-    classification = txn["classification"]
-    classified_by = txn["classified_by"]
+    classification = txn.get("classification", "")
+    classified_by = txn.get("classified_by", "")
     percentage_str = txn.get("percentage", "")
     note = txn.get("note", "")
+    excluded = txn.get("excluded") == "true"
     
     display_cls = "Shared"
     if classification == "A":
@@ -230,10 +241,15 @@ def _build_update_response(interaction, txn, updated=True, action_user=None):
             "description": f"**${txn['amount']}** on {txn['date']}",
             "color": 0x57F287, # Green
             "fields": [
-                {"name": "Classified As", "value": f"**{display_cls}**", "inline": True},
-                {"name": "By", "value": classified_by, "inline": True}
             ]
         }
+        
+        if excluded:
+            embed["color"] = 0x95A5A6 # Grey
+            embed["fields"].append({"name": "Status", "value": "**Ignored**", "inline": True})
+        else:
+            embed["fields"].append({"name": "Classified As", "value": f"**{display_cls}**", "inline": True})
+            embed["fields"].append({"name": "By", "value": classified_by, "inline": True})
         
         if note:
             embed["fields"].append({"name": "Note", "value": note, "inline": False})
