@@ -107,7 +107,7 @@ def build_classification_components(txn_id: str) -> list:
     
     # Row 2: Custom Split Dropdown
     select_options = []
-    for pct in [60, 65, 70, 75]:
+    for pct in [25, 30, 35, 40, 60, 65, 70, 75]:
         select_options.append({
             "label": f"You pay {pct}%",
             "value": f"S{pct}",
