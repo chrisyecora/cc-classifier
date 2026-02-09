@@ -7,7 +7,7 @@ from lib.storage import (
     get_unclassified_transactions
 )
 
-def test_exclude_transaction(s3_mock, env_setup):
+def test_exclude_transaction(dynamodb_mock, env_setup):
     initial = [{"transaction_id": "1", "amount": "10.00", "merchant": "Test", "classification": ""}]
     write_transactions(initial)
     
@@ -24,7 +24,7 @@ def test_exclude_transaction(s3_mock, env_setup):
     ids = [t["transaction_id"] for t in unclassified]
     assert "1" not in ids
 
-def test_reset_transaction_clears_exclusion(s3_mock, env_setup):
+def test_reset_transaction_clears_exclusion(dynamodb_mock, env_setup):
     initial = [{"transaction_id": "1", "amount": "10.00", "classification": "", "excluded": "true"}]
     write_transactions(initial)
     

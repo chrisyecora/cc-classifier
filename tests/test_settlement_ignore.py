@@ -3,7 +3,7 @@ from decimal import Decimal
 from lib.settlement import calculate_settlement
 from lib.storage import write_transactions
 
-def test_settlement_ignores_excluded(s3_mock, env_setup):
+def test_settlement_ignores_excluded(dynamodb_mock, env_setup):
     # Setup transactions
     # 1. User A (included)
     # 2. Excluded (should be ignored)

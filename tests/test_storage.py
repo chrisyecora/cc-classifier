@@ -10,7 +10,7 @@ from lib.storage import (
     get_unclassified_transactions
 )
 
-def test_read_write_transactions(s3_mock, env_setup):
+def test_read_write_transactions(dynamodb_mock, env_setup):
     txns = [
         {"transaction_id": "1", "amount": "10.00", "merchant": "Test"},
         {"transaction_id": "2", "amount": "20.00", "merchant": "Test2"}
@@ -22,7 +22,7 @@ def test_read_write_transactions(s3_mock, env_setup):
     assert read_back[0]["transaction_id"] == "1"
     assert read_back[1]["amount"] == "20.00"
 
-def test_append_transactions_no_duplicates(s3_mock, env_setup):
+def test_append_transactions_no_duplicates(dynamodb_mock, env_setup):
     initial = [{"transaction_id": "1", "amount": "10.00"}]
     write_transactions(initial)
     
@@ -40,7 +40,7 @@ def test_append_transactions_no_duplicates(s3_mock, env_setup):
     assert "1" in ids
     assert "2" in ids
 
-def test_update_transaction(s3_mock, env_setup):
+def test_update_transaction(dynamodb_mock, env_setup):
     initial = [{"transaction_id": "1", "classification": ""}]
     write_transactions(initial)
     
@@ -52,7 +52,7 @@ def test_update_transaction(s3_mock, env_setup):
     assert updated["classified_by"] == "Alex"
     assert updated["percentage"] == "50"
 
-def test_update_transaction_already_classified(s3_mock, env_setup):
+def test_update_transaction_already_classified(dynamodb_mock, env_setup):
     initial = [{"transaction_id": "1", "classification": "A"}]
     write_transactions(initial)
     
@@ -74,7 +74,7 @@ def test_statement_period_calculation():
     assert start == date(2025, 11, 10)
     assert end == date(2025, 12, 9)
 
-def test_get_transactions_for_statement(s3_mock, env_setup):
+def test_get_transactions_for_statement(dynamodb_mock, env_setup):
     txns = [
         {"transaction_id": "1", "date": "2025-12-09"}, # In range
         {"transaction_id": "2", "date": "2025-12-10"}, # In range

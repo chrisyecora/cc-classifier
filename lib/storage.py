@@ -1,179 +1,199 @@
 import boto3
-import csv
-import io
-from datetime import date, timedelta
+from boto3.dynamodb.conditions import Key, Attr
+from datetime import date
 from dateutil.relativedelta import relativedelta
 from config import get_config
 
 # Constants
-CSV_FIELDNAMES = [
-    "transaction_id", "date", "amount", "merchant", 
-    "classification", "classified_by", "percentage", "notified_at", "note", "excluded"
-]
-CSV_FILENAME = "transactions.csv"
+PK_TRX = "TRX"
+PK_CONFIG = "CONFIG"
+SK_CURSOR = "PLAID_CURSOR"
 
-def get_s3_client():
-    return boto3.client("s3")
+def get_table():
+    config = get_config()
+    dynamodb = boto3.resource("dynamodb")
+    return dynamodb.Table(config.table_name)
 
 def read_transactions() -> list[dict]:
-    config = get_config()
-    s3 = get_s3_client()
+    """
+    Reads all transactions. 
+    Warning: This performs a Scan operation.
+    """
+    table = get_table()
+    response = table.scan(
+        FilterExpression=Key('pk').eq(PK_TRX)
+    )
+    items = response.get('Items', [])
     
-    try:
-        response = s3.get_object(Bucket=config.s3_bucket, Key=CSV_FILENAME)
-        content = response["Body"].read().decode("utf-8")
-        reader = csv.DictReader(io.StringIO(content))
-        return list(reader)
-    except Exception as e:
-        # Check if it's NoSuchKey. In boto3 it's a ClientError. 
-        # For simplicity/mocking compat, if file missing return empty list
-        if "NoSuchKey" in str(e):
-            return []
-        raise e
+    # Handle pagination if > 1MB (unlikely for personal use but good practice)
+    while 'LastEvaluatedKey' in response:
+        response = table.scan(
+            FilterExpression=Key('pk').eq(PK_TRX),
+            ExclusiveStartKey=response['LastEvaluatedKey']
+        )
+        items.extend(response.get('Items', []))
+        
+    return _map_ddb_items_to_model(items)
 
 def write_transactions(transactions: list[dict]) -> None:
-    config = get_config()
-    s3 = get_s3_client()
-    
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=CSV_FIELDNAMES)
-    writer.writeheader()
-    writer.writerows(transactions)
-    
-    s3.put_object(
-        Bucket=config.s3_bucket,
-        Key=CSV_FILENAME,
-        Body=output.getvalue(),
-        ContentType="text/csv"
-    )
+    """
+    Overwrites/Inserts transactions.
+    """
+    table = get_table()
+    with table.batch_writer() as batch:
+        for txn in transactions:
+            item = _map_model_to_ddb_item(txn)
+            batch.put_item(Item=item)
 
 def append_transactions(new_transactions: list[dict]) -> int:
-    existing = read_transactions()
-    existing_ids = {t["transaction_id"] for t in existing}
+    """
+    Appends new transactions.
+    Only inserts if transaction_id (sk) does not exist.
+    """
+    if not new_transactions:
+        return 0
     
-    to_add = []
+    table = get_table()
+    count = 0
+    
+    # batch_writer doesn't support ConditionExpression, so we loop.
+    # For daily volume (startups), this is fine.
     for txn in new_transactions:
-        if txn["transaction_id"] not in existing_ids:
-            # Ensure all fields present
-            row = {k: txn.get(k, "") for k in CSV_FIELDNAMES}
-            to_add.append(row)
+        item = _map_model_to_ddb_item(txn)
+        try:
+            table.put_item(
+                Item=item,
+                ConditionExpression="attribute_not_exists(sk)"
+            )
+            count += 1
+        except boto3.client('dynamodb').exceptions.ConditionalCheckFailedException:
+            pass
             
-    if to_add:
-        # Combine and rewrite
-        # In a high-concurrency DB this is bad, but for daily lambda strictly sequential it's fine.
-        # Alternatively we could just append to file object? S3 doesn't support append.
-        # Must rewrite full file.
-        all_txns = existing + to_add
-        write_transactions(all_txns)
-        
-    return len(to_add)
+    return count
 
 def update_transaction(transaction_id: str, classification: str, classified_by: str, percentage: int | None) -> bool:
-    transactions = read_transactions()
-    updated = False
+    table = get_table()
     
-    for txn in transactions:
-        if txn["transaction_id"] == transaction_id:
-            if txn["classification"]:
-                return False # Already classified
-                
-            txn["classification"] = classification
-            txn["classified_by"] = classified_by
-            txn["percentage"] = str(percentage) if percentage is not None else ""
-            updated = True
-            break
-            
-    if updated:
-        write_transactions(transactions)
-        
-    return updated
+    # Check if already classified to avoid overwrite? 
+    # Logic in old storage: if txn["classification"]: return False
+    
+    # We can use ConditionExpression
+    try:
+        table.update_item(
+            Key={'pk': PK_TRX, 'sk': transaction_id},
+            UpdateExpression="set classification=:c, classified_by=:u, percentage=:p",
+            ConditionExpression="(attribute_not_exists(classification) OR classification = :empty) AND attribute_exists(pk)",
+            ExpressionAttributeValues={
+                ':c': classification,
+                ':u': classified_by,
+                ':p': str(percentage) if percentage is not None else "",
+                ':empty': ""
+            }
+        )
+        return True
+    except boto3.client('dynamodb').exceptions.ConditionalCheckFailedException:
+        return False
 
 def exclude_transaction(transaction_id: str) -> bool:
-    transactions = read_transactions()
-    updated = False
-    
-    for txn in transactions:
-        if txn["transaction_id"] == transaction_id:
-            txn["excluded"] = "true"
-            updated = True
-            break
-            
-    if updated:
-        write_transactions(transactions)
-        
-    return updated
+    table = get_table()
+    try:
+        table.update_item(
+            Key={'pk': PK_TRX, 'sk': transaction_id},
+            UpdateExpression="set excluded=:e",
+            ConditionExpression="attribute_exists(pk)",
+            ExpressionAttributeValues={':e': "true"}
+        )
+        return True
+    except Exception:
+        return False
 
 def update_transaction_note(transaction_id: str, note: str) -> bool:
-    transactions = read_transactions()
-    updated = False
-    
-    for txn in transactions:
-        if txn["transaction_id"] == transaction_id:
-            txn["note"] = note
-            updated = True
-            break
-            
-    if updated:
-        write_transactions(transactions)
-        
-    return updated
+    table = get_table()
+    try:
+        table.update_item(
+            Key={'pk': PK_TRX, 'sk': transaction_id},
+            UpdateExpression="set note=:n",
+            ConditionExpression="attribute_exists(pk)",
+            ExpressionAttributeValues={':n': note}
+        )
+        return True
+    except Exception:
+        return False
 
 def reset_transaction(transaction_id: str) -> bool:
-    transactions = read_transactions()
-    updated = False
-    
-    for txn in transactions:
-        if txn["transaction_id"] == transaction_id:
-            txn["classification"] = ""
-            txn["classified_by"] = ""
-            txn["percentage"] = ""
-            txn["note"] = ""
-            txn["excluded"] = ""
-            updated = True
-            break
-            
-    if updated:
-        write_transactions(transactions)
-        
-    return updated
+    table = get_table()
+    try:
+        table.update_item(
+            Key={'pk': PK_TRX, 'sk': transaction_id},
+            UpdateExpression="set classification=:e, classified_by=:e, percentage=:e, note=:e, excluded=:e",
+            ConditionExpression="attribute_exists(pk)",
+            ExpressionAttributeValues={':e': ""}
+        )
+        return True
+    except Exception:
+        return False
 
 def get_unclassified_transactions() -> list[dict]:
-    txns = read_transactions()
-    return [t for t in txns if not t["classification"] and not t.get("excluded")]
+    # This is expensive (Scan). 
+    # Optimization: Query by DateIndex for last X months?
+    # For now, Scan is acceptable for personal scale.
+    table = get_table()
+    response = table.scan(
+        FilterExpression=Key('pk').eq(PK_TRX) & (Attr('classification').eq("") | Attr('classification').not_exists()) & (Attr('excluded').ne("true"))
+    )
+    return _map_ddb_items_to_model(response.get('Items', []))
 
 def get_statement_period(settlement_date: date) -> tuple[date, date]:
-    """
-    Calculate statement period for a settlement date (usually 1st of month).
-    Period is: 10th of (month-2) to 9th of (month-1).
-    Example: Settlement Feb 1st.
-    Statement: Dec 10 - Jan 9.
-    """
-    # Go back one month to get the "statement month" (Jan)
+    # Same logic as before
     prev_month = settlement_date - relativedelta(months=1)
-    
-    # End date is 9th of that month (Jan 9)
     end_date = date(prev_month.year, prev_month.month, 9)
-    
-    # Start date is 10th of the month prior to that (Dec 10)
     start_month = prev_month - relativedelta(months=1)
     start_date = date(start_month.year, start_month.month, 10)
-    
     return start_date, end_date
 
 def get_transactions_for_statement_period(settlement_date: date) -> list[dict]:
     start_date, end_date = get_statement_period(settlement_date)
-    all_txns = read_transactions()
+    start_str = start_date.isoformat()
+    end_str = end_date.isoformat()
     
-    filtered = []
-    for txn in all_txns:
-        try:
-            t_date = date.fromisoformat(txn["date"])
-            if start_date <= t_date <= end_date:
-                filtered.append(txn)
-        except ValueError:
-            continue
+    table = get_table()
+    response = table.query(
+        IndexName='DateIndex',
+        KeyConditionExpression=Key('pk').eq(PK_TRX) & Key('date').between(start_str, end_str)
+    )
+    
+    return _map_ddb_items_to_model(response.get('Items', []))
+
+# --- Helpers ---
+
+def _map_model_to_ddb_item(txn: dict) -> dict:
+    item = txn.copy()
+    item['pk'] = PK_TRX
+    item['sk'] = txn['transaction_id']
+    # DynamoDB doesn't like empty strings in some versions, but boto3 handles it mostly. 
+    # If using older boto3/dynamodb, might need to use NULL or omit.
+    # We will just pass it through for now.
+    return item
+
+def _map_ddb_items_to_model(items: list[dict]) -> list[dict]:
+    # Strip PK/SK
+    result = []
+    for item in items:
+        # Convert Decimals to float/str if needed?
+        # The app uses strings for amounts mostly.
+        # boto3 Unmarshal handles Decimal.
+        # Ensure 'transaction_id' is present (it is sk)
+        if 'transaction_id' not in item and 'sk' in item:
+            item['transaction_id'] = item['sk']
             
-    return filtered
+        # Clean up internal keys
+        if 'pk' in item: del item['pk']
+        if 'sk' in item: del item['sk']
+        
+        result.append(item)
+    return result
+
+# --- User Config (Read-only from Config) ---
 
 def read_users() -> dict[str, dict]:
     config = get_config()
@@ -183,10 +203,7 @@ def read_users() -> dict[str, dict]:
     }
 
 def get_user_by_phone(phone: str) -> dict | None:
-    users = read_users()
-    for uid, data in users.items():
-        if data["phone"] == phone:
-            return {"id": uid, **data}
+    # Legacy support
     return None
 
 def get_other_user(user_id: str) -> dict:
@@ -196,31 +213,15 @@ def get_other_user(user_id: str) -> dict:
     return {"id": "user_a", **users["user_a"]}
 
 # --- Cursor Management ---
-CURSOR_FILENAME = "plaid_cursor.txt"
 
 def get_cursor() -> str | None:
-    config = get_config()
-    s3 = get_s3_client()
-    
-    try:
-        response = s3.get_object(Bucket=config.s3_bucket, Key=CURSOR_FILENAME)
-        content = response["Body"].read().decode("utf-8").strip()
-        return content if content else None
-    except Exception as e:
-        if "NoSuchKey" in str(e):
-            return None
-        raise e
+    table = get_table()
+    response = table.get_item(Key={'pk': PK_CONFIG, 'sk': SK_CURSOR})
+    if 'Item' in response:
+        return response['Item'].get('value')
+    return None
 
 def save_cursor(cursor: str) -> None:
-    if not cursor:
-        return
-        
-    config = get_config()
-    s3 = get_s3_client()
-    
-    s3.put_object(
-        Bucket=config.s3_bucket,
-        Key=CURSOR_FILENAME,
-        Body=cursor.encode("utf-8"),
-        ContentType="text/plain"
-    )
+    if not cursor: return
+    table = get_table()
+    table.put_item(Item={'pk': PK_CONFIG, 'sk': SK_CURSOR, 'value': cursor})

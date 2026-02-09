@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Credit Card Tracker - Discord-based expense classification
+Description: Credit Card Tracker - Discord-based expense classification (DynamoDB Backend)
 
 Parameters:
   Environment:
@@ -61,7 +61,7 @@ Globals:
     Environment:
       Variables:
         ENVIRONMENT: !Ref Environment
-        S3_BUCKET: !Ref TransactionsBucket
+        TABLE_NAME: !Ref TransactionsTable
         
         DISCORD_BOT_TOKEN: !Ref DiscordBotToken
         DISCORD_PUBLIC_KEY: !Ref DiscordPublicKey
@@ -79,15 +79,32 @@ Globals:
         DISCORD_USER_B: !Ref DiscordUserB
 
 Resources:
-  TransactionsBucket:
-    Type: AWS::S3::Bucket
+  TransactionsTable:
+    Type: AWS::DynamoDB::Table
     Properties:
-      BucketName: !Sub credit-card-tracker-${Environment}-${AWS::AccountId}
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
+      TableName: !Sub credit-card-tracker-${Environment}-${AWS::AccountId}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: date
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: DateIndex
+          KeySchema:
+            - AttributeName: pk
+              KeyType: HASH
+            - AttributeName: date
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
 
   DailyScanFunction:
     Type: AWS::Serverless::Function
@@ -95,8 +112,8 @@ Resources:
       FunctionName: !Sub credit-card-tracker-daily-scan-${Environment}
       Handler: lambdas/daily_scan.handler
       Policies:
-        - S3CrudPolicy:
-            BucketName: !Ref TransactionsBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TransactionsTable
       Events:
         DailySchedule:
           Type: Schedule
@@ -117,8 +134,8 @@ Resources:
       FunctionName: !Sub credit-card-tracker-webhook-${Environment}
       Handler: lambdas/webhook.handler
       Policies:
-        - S3CrudPolicy:
-            BucketName: !Ref TransactionsBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TransactionsTable
       Events:
         DiscordWebhook:
           Type: Api
@@ -130,6 +147,6 @@ Outputs:
   InteractionsEndpointUrl:
     Description: URL to paste into Discord Developer Portal -> General Information -> Interactions Endpoint URL
     Value: !Sub https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/discord
-  S3Bucket:
-    Description: S3 bucket for transaction data
-    Value: !Ref TransactionsBucket
+  DynamoDBTableName:
+    Description: Name of the DynamoDB table
+    Value: !Ref TransactionsTable

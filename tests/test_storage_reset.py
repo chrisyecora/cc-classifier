@@ -1,7 +1,7 @@
 import pytest
 from lib.storage import write_transactions, read_transactions, reset_transaction
 
-def test_reset_transaction(s3_mock, env_setup):
+def test_reset_transaction(dynamodb_mock, env_setup):
     # Setup classified transaction
     initial = [{
         "transaction_id": "tx1", 
@@ -23,6 +23,6 @@ def test_reset_transaction(s3_mock, env_setup):
     assert updated["percentage"] == ""
     assert updated["amount"] == "50.00" # Should preserve other fields
 
-def test_reset_transaction_not_found(s3_mock, env_setup):
+def test_reset_transaction_not_found(dynamodb_mock, env_setup):
     success = reset_transaction("nonexistent")
     assert success is False

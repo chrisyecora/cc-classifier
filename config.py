@@ -5,7 +5,7 @@ from dataclasses import dataclass
 @dataclass
 class Config:
     environment: str
-    s3_bucket: str
+    table_name: str
     
     # Discord
     discord_bot_token: str
@@ -36,7 +36,7 @@ def get_config() -> Config:
 
         _config = Config(
             environment=get_env("ENVIRONMENT", "dev"),
-            s3_bucket=get_env("S3_BUCKET", ""),
+            table_name=get_env("TABLE_NAME", ""),
             
             discord_bot_token=get_env("DISCORD_BOT_TOKEN", ""),
             discord_public_key=get_env("DISCORD_PUBLIC_KEY", ""),

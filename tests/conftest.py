@@ -1,56 +1,16 @@
 import os
 import pytest
-from unittest.mock import MagicMock
 import boto3
+from moto import mock_aws
 from config import reset_config
-
-class InMemoryS3:
-    def __init__(self):
-        self.storage: dict[str, dict[str, str]] = {}
-        # Mocking exceptions
-        self.exceptions = type("Exceptions", (), {
-            "NoSuchKey": type("NoSuchKey", (Exception,), {})
-        })()
-
-    def get_object(self, Bucket: str, Key: str) -> dict:
-        if Bucket not in self.storage or Key not in self.storage[Bucket]:
-            # Simulate AWS ClientError for NoSuchKey
-            # In a real boto3 mock, this would be a botocore.exceptions.ClientError
-            # For simplicity in our unit tests, we can raise a simpler exception 
-            # or rely on the fact that we're mocking the client.
-            # However, code often catches ClientError.
-            # Let's try to mimic the structure if possible, or just raise a custom one 
-            # if our code only catches Exception or ClientError.
-            # Ideally we'd use botocore.exceptions.ClientError but that requires instantiating it complexly.
-            # For now, let's raise a KeyError which we can verify/handle in tests, 
-            # or better: raise a mocked ClientError.
-            
-            # Since we can't easily import botocore here without adding it to deps (it is in boto3 deps),
-            # We will raise a simple exception for now, but in our `s3_mock` fixture we might need to be smarter.
-            raise self.exceptions.NoSuchKey("An error occurred (NoSuchKey) when calling the GetObject operation: The specified key does not exist.")
-        
-        return {
-            "Body": MagicMock(read=lambda: self.storage[Bucket][Key].encode("utf-8")),
-            "ContentType": "text/csv"
-        }
-
-    def put_object(self, Bucket: str, Key: str, Body: str | bytes, ContentType: str = None) -> dict:
-        if Bucket not in self.storage:
-            self.storage[Bucket] = {}
-        
-        if isinstance(Body, bytes):
-            self.storage[Bucket][Key] = Body.decode("utf-8")
-        else:
-            self.storage[Bucket][Key] = Body
-            
-        return {"ResponseMetadata": {"HTTPStatusCode": 200}}
 
 @pytest.fixture
 def env_setup(monkeypatch):
     """Set up environment variables for testing."""
     env_vars = {
         "ENVIRONMENT": "test",
-        "S3_BUCKET": "test-bucket",
+        "TABLE_NAME": "test-table",
+        "AWS_DEFAULT_REGION": "us-east-1",
         "DISCORD_BOT_TOKEN": "test_bot_token",
         "DISCORD_PUBLIC_KEY": "00" * 32, # 32 bytes hex string (64 chars)
         "DISCORD_CLASSIFICATIONS_CHANNEL_ID": "111",
@@ -69,14 +29,38 @@ def env_setup(monkeypatch):
     reset_config()
 
 @pytest.fixture
-def s3_mock(mocker):
-    """Mock boto3 S3 client with in-memory storage."""
-    in_memory_s3 = InMemoryS3()
-    
-    def mock_client(service_name, **kwargs):
-        if service_name == "s3":
-            return in_memory_s3
-        return MagicMock()
+def dynamodb_mock(env_setup):
+    """Mock DynamoDB table."""
+    with mock_aws():
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        
+        # Create the table with schema matching template.yaml
+        table = dynamodb.create_table(
+            TableName="test-table",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"}
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+                {"AttributeName": "date", "AttributeType": "S"}
+            ],
+            GlobalSecondaryIndexes=[
+                {
+                    "IndexName": "DateIndex",
+                    "KeySchema": [
+                        {"AttributeName": "pk", "KeyType": "HASH"},
+                        {"AttributeName": "date", "KeyType": "RANGE"}
+                    ],
+                    "Projection": {"ProjectionType": "ALL"}
+                }
+            ],
+            BillingMode="PAY_PER_REQUEST"
+        )
+        yield table
 
-    mocker.patch("boto3.client", side_effect=mock_client)
-    return in_memory_s3
+# Alias for backward compatibility if tests request s3_mock (though we should update them)
+# But we must update them because s3_mock returned an InMemoryS3 object, 
+# while dynamodb_mock returns a boto3 Table resource.
+# So I won't provide an alias, I'll force update of tests.
