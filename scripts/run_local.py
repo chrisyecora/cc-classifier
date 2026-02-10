@@ -19,7 +19,9 @@ def main():
     if len(sys.argv) < 2:
         print("Usage:")
         print("  python scripts/run_local.py scan")
-        print("  python scripts/run_local.py webhook <phone_number> <message>")
+        print("  python scripts/run_local.py settle [override_date]")
+        print("  python scripts/run_local.py webhook <custom_id>")
+        print("  python scripts/run_local.py reset")
         return
 
     command = sys.argv[1]
@@ -68,74 +70,6 @@ def main():
             import traceback
             traceback.print_exc()
 
-    elif command == "backfill":
-        # Usage: python scripts/run_local.py backfill 2026-01-10 2026-02-07
-        if len(sys.argv) < 4:
-            print("Usage: python scripts/run_local.py backfill <start_date> <end_date>")
-            print("Example: python scripts/run_local.py backfill 2026-01-10 2026-02-07")
-            return
-            
-        start_str = sys.argv[2]
-        end_str = sys.argv[3]
-        
-        print(f"--- Running Backfill: {start_str} to {end_str} ---")
-        
-        from datetime import date
-        from lib.plaid_client import fetch_transactions
-        from lib.storage import append_transactions, get_unclassified_transactions
-        from lib.discord_client import send_transaction_notification
-        
-        try:
-            start_date = date.fromisoformat(start_str)
-            end_date = date.fromisoformat(end_str)
-            
-            print("Fetching transactions from Plaid...")
-            transactions = fetch_transactions(start_date, end_date)
-            
-            if not transactions:
-                print("No transactions found in this range.")
-            else:
-                print(f"Found {len(transactions)} transactions. Saving to S3...")
-                added = append_transactions(transactions)
-                print(f"Added {added} new transactions to storage.")
-                
-                # Optional: Send notifications for these backfilled items?
-                # Usually backfills might be large, so maybe ask user or just do it.
-                # Let's do it to ensure they get classified.
-                if added > 0:
-                    print("Sending Discord notifications...")
-                    unclassified = get_unclassified_transactions()
-                    # Filter only the ones we just added? 
-                    # append_transactions doesn't return IDs. 
-                    # But get_unclassified_transactions returns ALL unclassified.
-                    # This is safe, ensures nothing is missed.
-                    send_transaction_notification(unclassified)
-                    print("Notifications sent.")
-                    
-        except Exception as e:
-            print(f"\nError running backfill: {e}")
-            import traceback
-            traceback.print_exc()
-
-    elif command == "plaid-test":
-        print("--- Testing Plaid Connection Directly ---")
-        from lib.plaid_client import fetch_transactions
-        from datetime import date, timedelta
-        
-        today = date.today()
-        start = today - timedelta(days=30) # Last 30 days
-        
-        print(f"Fetching transactions from {start} to {today}...")
-        try:
-            txns = fetch_transactions(start, today)
-            print(f"\nSuccess! Found {len(txns)} transactions:")
-            for t in txns:
-                print(f"- {t['date']}: {t['merchant']} (${t['amount']})")
-        except Exception as e:
-            print(f"\nError fetching from Plaid: {e}")
-            import traceback
-            traceback.print_exc()
-
     elif command == "webhook":
         if len(sys.argv) < 3:
             print("Usage: python scripts/run_local.py webhook <custom_id>")
@@ -180,6 +114,31 @@ def main():
         finally:
             # Restore verification
             lambdas.webhook.verify_discord_signature = original_verify
+
+    elif command == "reset":
+        print("--- Resetting DynamoDB Table (Deleting All Data) ---")
+        confirm = input("Are you sure you want to delete ALL data? (yes/no): ")
+        if confirm.lower() != "yes":
+            print("Aborted.")
+            return
+
+        from lib.storage import get_table, PK_TRX, PK_CONFIG
+        import boto3
+        
+        table = get_table()
+        
+        # Scan and delete
+        # Note: This is inefficient for large tables but fine for dev/testing.
+        scan = table.scan()
+        with table.batch_writer() as batch:
+            for each in scan['Items']:
+                batch.delete_item(
+                    Key={
+                        'pk': each['pk'],
+                        'sk': each['sk']
+                    }
+                )
+        print("Table cleared.")
 
     else:
         print(f"Unknown command: {command}")

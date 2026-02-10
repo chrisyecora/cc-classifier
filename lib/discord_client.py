@@ -1,4 +1,3 @@
-import json
 import requests
 from nacl.signing import VerifyKey
 from nacl.exceptions import BadSignatureError
@@ -156,7 +155,11 @@ def send_transaction_notification(transactions: list[dict]) -> bool:
     success = True
     config = get_config()
     
-    for txn in transactions:
+    # Sort transactions by date (oldest to newest)
+    # ISO dates sort lexicographically correct
+    sorted_txns = sorted(transactions, key=lambda x: x.get("date", ""))
+    
+    for txn in sorted_txns:
         txn_id = txn["transaction_id"]
         merchant = txn["merchant"]
         amount = txn["amount"]

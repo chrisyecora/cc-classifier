@@ -2,12 +2,11 @@ from datetime import date
 from lib.plaid_client import fetch_new_transactions
 from lib.storage import (
     append_transactions, 
-    get_unclassified_transactions,
     get_cursor,
     save_cursor
 )
 from lib.discord_client import send_transaction_notification, send_settlement_notification
-from lib.settlement import calculate_settlement, format_settlement_sms
+from lib.settlement import calculate_settlement, format_settlement_message
 
 def handler(event, context):
     """
@@ -48,16 +47,15 @@ def _handle_daily_scan():
         save_cursor(new_cursor)
         print(f"Saved new cursor: {new_cursor}")
     
-    unclassified = get_unclassified_transactions()
-    if unclassified:
-        # Discord client handles sending to the configured channel
-        send_transaction_notification(unclassified)
+    # Notify ONLY for newly fetched transactions (Fire-and-Forget)
+    if transactions:
+        send_transaction_notification(transactions)
     else:
-        print("No unclassified transactions pending.")
+        print("No new transactions to notify.")
 
 def _handle_monthly_settlement():
     today = date.today()
     # Calculate for the statement period ending last month
     result = calculate_settlement(today)
-    msg = format_settlement_sms(result)
+    msg = format_settlement_message(result)
     send_settlement_notification(msg)

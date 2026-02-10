@@ -3,7 +3,7 @@ from config import get_config
 def test_get_config_reads_env_vars(env_setup):
     config = get_config()
     assert config.environment == "test"
-    assert config.s3_bucket == "test-bucket"
+    assert config.table_name == "test-table"
     assert config.user_a_name == "TestAlex"
 
 def test_get_config_defaults(monkeypatch):

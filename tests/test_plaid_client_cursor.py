@@ -5,6 +5,13 @@ from lib.plaid_client import fetch_new_transactions, get_plaid_client
 # Helper to mock sync response
 def mock_sync_response(mocker, client_mock, added=[], modified=[], removed=[], has_more=False, next_cursor="next"):
     mock_response = mocker.MagicMock()
+    # Support both attribute access and to_dict (if used elsewhere, though new code uses attributes)
+    mock_response.added = added
+    mock_response.modified = modified
+    mock_response.removed = removed
+    mock_response.has_more = has_more
+    mock_response.next_cursor = next_cursor
+    
     mock_response.to_dict.return_value = {
         "added": added,
         "modified": modified,
@@ -20,6 +27,9 @@ def test_fetch_new_transactions_with_cursor(mocker, env_setup):
     
     # Mock data (old transaction, but since cursor is provided, we keep it)
     old_date = (date.today() - timedelta(days=100)).isoformat()
+    # Plaid returns objects usually, but we use dicts in tests often.
+    # The code converts them using getattr or get.
+    # So using dicts here is fine given _transform_transactions implementation.
     txns_data = [{"transaction_id": "t1", "date": old_date, "amount": 10, "merchant_name": "Old"}]
     
     mock_sync_response(mocker, mock_client, added=txns_data, next_cursor="new_cursor")
@@ -63,19 +73,15 @@ def test_pagination(mocker, env_setup):
     
     # Page 1: has_more = True
     page1 = mocker.MagicMock()
-    page1.to_dict.return_value = {
-        "added": [{"transaction_id": "p1", "date": str(date.today()), "amount": 1}],
-        "has_more": True,
-        "next_cursor": "c1"
-    }
+    page1.added = [{"transaction_id": "p1", "date": str(date.today()), "amount": 1}]
+    page1.has_more = True
+    page1.next_cursor = "c1"
     
     # Page 2: has_more = False
     page2 = mocker.MagicMock()
-    page2.to_dict.return_value = {
-        "added": [{"transaction_id": "p2", "date": str(date.today()), "amount": 2}],
-        "has_more": False,
-        "next_cursor": "c2"
-    }
+    page2.added = [{"transaction_id": "p2", "date": str(date.today()), "amount": 2}]
+    page2.has_more = False
+    page2.next_cursor = "c2"
     
     mock_client.transactions_sync.side_effect = [page1, page2]
     

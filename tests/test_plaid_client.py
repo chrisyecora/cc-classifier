@@ -1,6 +1,5 @@
 import pytest
-from datetime import date
-from lib.plaid_client import fetch_transactions, get_plaid_client
+from lib.plaid_client import fetch_new_transactions, get_plaid_client
 
 # Mock data
 SAMPLE_PLAID_TRANSACTIONS = [
@@ -20,13 +19,12 @@ SAMPLE_PLAID_TRANSACTIONS = [
     }
 ]
 
-def test_fetch_transactions_success(mocker, env_setup):
+def test_fetch_new_transactions_success(mocker, env_setup):
     # Mock Plaid API client
     mock_client = mocker.MagicMock()
     mocker.patch("lib.plaid_client.get_plaid_client", return_value=mock_client)
     
     # Mock transactions_sync response
-    # It returns an object that has .to_dict() method
     mock_response = mocker.MagicMock()
     mock_response.to_dict.return_value = {
         "added": SAMPLE_PLAID_TRANSACTIONS,
@@ -35,26 +33,32 @@ def test_fetch_transactions_success(mocker, env_setup):
         "has_more": False,
         "next_cursor": "new_cursor"
     }
+    # Direct attribute access for Plaid models
+    mock_response.added = SAMPLE_PLAID_TRANSACTIONS
+    mock_response.has_more = False
+    mock_response.next_cursor = "new_cursor"
+    
     mock_client.transactions_sync.return_value = mock_response
     
-    txns = fetch_transactions(date(2026, 1, 1), date(2026, 1, 31))
+    txns, cursor = fetch_new_transactions("old_cursor")
     
     # Should transform data
     assert len(txns) == 2
     assert txns[0]["transaction_id"] == "tx1"
+    assert cursor == "new_cursor"
     
     # Verify API call
     mock_client.transactions_sync.assert_called_once()
 
-def test_fetch_transactions_retry_logic(mocker, env_setup):
+def test_fetch_new_transactions_retry_logic(mocker, env_setup):
     mock_client = mocker.MagicMock()
     mocker.patch("lib.plaid_client.get_plaid_client", return_value=mock_client)
     
     # Fail twice, then succeed
     mock_response = mocker.MagicMock()
-    mock_response.to_dict.return_value = {
-        "added": [], "modified": [], "removed": [], "has_more": False, "next_cursor": "c"
-    }
+    mock_response.added = []
+    mock_response.has_more = False
+    mock_response.next_cursor = "c"
     
     from plaid.exceptions import ApiException
     mock_client.transactions_sync.side_effect = [
@@ -66,9 +70,6 @@ def test_fetch_transactions_retry_logic(mocker, env_setup):
     # Mock time.sleep to speed up test
     mocker.patch("time.sleep")
     
-    fetch_transactions(date(2026, 1, 1), date(2026, 1, 31))
+    fetch_new_transactions("c")
     
     assert mock_client.transactions_sync.call_count == 3
-
-def test_transform_ignore_pending(mocker, env_setup):
-    pass
