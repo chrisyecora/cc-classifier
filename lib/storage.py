@@ -104,7 +104,8 @@ def exclude_transaction(transaction_id: str) -> bool:
             ExpressionAttributeValues={':e': "true"}
         )
         return True
-    except Exception:
+    except Exception as e:
+        print(f"Error excluding transaction {transaction_id}: {e}")
         return False
 
 def update_transaction_note(transaction_id: str, note: str) -> bool:
@@ -117,7 +118,8 @@ def update_transaction_note(transaction_id: str, note: str) -> bool:
             ExpressionAttributeValues={':n': note}
         )
         return True
-    except Exception:
+    except Exception as e:
+        print(f"Error updating note for {transaction_id}: {e}")
         return False
 
 def reset_transaction(transaction_id: str) -> bool:
@@ -130,7 +132,8 @@ def reset_transaction(transaction_id: str) -> bool:
             ExpressionAttributeValues={':e': ""}
         )
         return True
-    except Exception:
+    except Exception as e:
+        print(f"Error resetting transaction {transaction_id}: {e}")
         return False
 
 def get_unclassified_transactions() -> list[dict]:
@@ -138,10 +141,18 @@ def get_unclassified_transactions() -> list[dict]:
     # Optimization: Query by DateIndex for last X months?
     # For now, Scan is acceptable for personal scale.
     table = get_table()
-    response = table.scan(
-        FilterExpression=Key('pk').eq(PK_TRX) & (Attr('classification').eq("") | Attr('classification').not_exists()) & (Attr('excluded').ne("true"))
-    )
-    return _map_ddb_items_to_model(response.get('Items', []))
+    scan_kwargs = {
+        'FilterExpression': Key('pk').eq(PK_TRX) & (Attr('classification').eq("") | Attr('classification').not_exists()) & (Attr('excluded').ne("true"))
+    }
+    response = table.scan(**scan_kwargs)
+    items = response.get('Items', [])
+    
+    while 'LastEvaluatedKey' in response:
+        scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
+        response = table.scan(**scan_kwargs)
+        items.extend(response.get('Items', []))
+        
+    return _map_ddb_items_to_model(items)
 
 def get_statement_period(settlement_date: date) -> tuple[date, date]:
     # Same logic as before

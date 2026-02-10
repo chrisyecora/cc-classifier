@@ -108,7 +108,7 @@ def calculate_settlement(settlement_date: date) -> SettlementResult:
         unclassified_count=unclassified_count
     )
 
-def format_settlement_sms(result: SettlementResult) -> str:
+def format_settlement_message(result: SettlementResult) -> str:
     import os
     is_dry_run = os.environ.get("IS_DRY_RUN", "false").lower() == "true"
     

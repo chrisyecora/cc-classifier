@@ -61,53 +61,6 @@ def _transform_transactions(plaid_transactions: list) -> list[dict]:
         })
     return result
 
-def fetch_transactions(start_date: date, end_date: date, max_retries: int = 3) -> list[dict]:
-    """
-    Fetches transactions within a date range using /transactions/sync (filtering locally).
-    Note: Plaid's /transactions/get is deprecated/limited, so we sync from beginning 
-    or a known cursor and filter.
-    """
-    client = get_plaid_client()
-    config = get_config()
-    
-    all_transactions = []
-    cursor = ''
-    has_more = True
-    
-    for attempt in range(max_retries):
-        try:
-            while has_more:
-                request = TransactionsSyncRequest(
-                    access_token=config.plaid_access_token,
-                    cursor=cursor,
-                    count=500 # Max batch size
-                )
-                response = client.transactions_sync(request)
-                
-                # In sync, response gives added, modified, removed.
-                # We care about added for backfill.
-                # Note: response is a model object, access attributes directly.
-                
-                all_transactions.extend(response.added)
-                
-                has_more = response.has_more
-                cursor = response.next_cursor
-            break
-        except Exception as e:
-            if attempt == max_retries - 1:
-                print(f"Error fetching transactions: {e}")
-                raise e
-            time.sleep(2 ** attempt)
-
-    # Filter by date range
-    filtered = []
-    for t in all_transactions:
-        t_date = t.date # Plaid model returns date object
-        if start_date <= t_date <= end_date:
-            filtered.append(t)
-            
-    return _transform_transactions(filtered)
-
 
 def fetch_new_transactions(cursor: str | None, max_retries: int = 3) -> tuple[list[dict], str]:
     """
@@ -142,6 +95,29 @@ def fetch_new_transactions(cursor: str | None, max_retries: int = 3) -> tuple[li
                 print(f"Error fetching new transactions: {e}")
                 raise e
             time.sleep(2 ** attempt)
+    
+    # Filter logic
+    final_transactions = []
+    
+    if cursor is None:
+        # Initial Sync: Keep only last 30 days
+        cutoff = date.today() - timedelta(days=30)
+        for t in added_transactions:
+            # Handle both dict and object for date access
+            if isinstance(t, dict):
+                t_date_val = t.get('date')
+            else:
+                t_date_val = getattr(t, 'date', None)
+                
+            t_date_str = str(t_date_val)
+            if not t_date_str: continue
+            try:
+                if date.fromisoformat(t_date_str) >= cutoff:
+                    final_transactions.append(t)
+            except ValueError: continue
+    else:
+        # Incremental Sync: Keep everything
+        final_transactions = added_transactions
             
     # Transform
-    return _transform_transactions(added_transactions), current_cursor
+    return _transform_transactions(final_transactions), current_cursor

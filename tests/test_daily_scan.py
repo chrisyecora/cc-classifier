@@ -17,9 +17,6 @@ def test_handler_daily_scan_cursor(mocker, env_setup):
     
     # Mock Storage
     mock_append = mocker.patch("lambdas.daily_scan.append_transactions", return_value=1)
-    mock_get_unclassified = mocker.patch("lambdas.daily_scan.get_unclassified_transactions", return_value=[
-        {"transaction_id": "1", "merchant": "Test", "amount": "10.00"}
-    ])
     
     # Mock Notification
     mock_send_notif = mocker.patch("lambdas.daily_scan.send_transaction_notification")
@@ -58,7 +55,7 @@ def test_handler_monthly_settlement(mocker, env_setup):
     mock_calculate.return_value.user_a.total_owed = "100.00"
     mock_calculate.return_value.user_b.total_owed = "50.00"
     
-    mock_format = mocker.patch("lambdas.daily_scan.format_settlement_sms", return_value="Msg")
+    mock_format = mocker.patch("lambdas.daily_scan.format_settlement_message", return_value="Msg")
     mock_send = mocker.patch("lambdas.daily_scan.send_settlement_notification")
     
     handler(event, None)
