@@ -71,3 +71,43 @@ def test_handler_unknown_event(mocker, env_setup):
     mocker.patch("lambdas.daily_scan.append_transactions", return_value=0)
     
     handler({"resources": ["unknown"]}, None)
+
+def test_daily_scan_sends_error_notification_on_failure(mocker, env_setup):
+    # Mock dependencies
+    mocker.patch('lambdas.daily_scan.get_cursor', return_value='some_cursor')
+    
+    mock_fetch = mocker.patch('lambdas.daily_scan.fetch_new_transactions')
+    mock_fetch.side_effect = Exception("Plaid API Error: Item Login Required")
+    
+    mock_send_error = mocker.patch('lambdas.daily_scan.send_error_notification')
+    
+    # Mock EventBridge event
+    event = {"resources": ["arn:aws:events:rule/DailySchedule"]}
+    
+    # Run handler and expect exception
+    with pytest.raises(Exception, match="Plaid API Error"):
+        handler(event, None)
+    
+    # Assert
+    mock_send_error.assert_called_once()
+    args, _ = mock_send_error.call_args
+    assert "Plaid API Error: Item Login Required" in args[0]
+
+def test_monthly_settlement_sends_error_notification_on_failure(mocker, env_setup):
+    # Mock dependencies
+    mock_calc = mocker.patch('lambdas.daily_scan.calculate_settlement')
+    mock_calc.side_effect = Exception("DynamoDB Error: ProvisionedThroughputExceeded")
+    
+    mock_send_error = mocker.patch('lambdas.daily_scan.send_error_notification')
+    
+    # Mock EventBridge event for monthly settlement
+    event = {"resources": ["arn:aws:events:rule/MonthlySettlement"]}
+    
+    # Run handler and expect exception
+    with pytest.raises(Exception, match="DynamoDB Error"):
+        handler(event, None)
+    
+    # Assert
+    mock_send_error.assert_called_once()
+    args, _ = mock_send_error.call_args
+    assert "DynamoDB Error: ProvisionedThroughputExceeded" in args[0]

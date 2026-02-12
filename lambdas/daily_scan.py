@@ -5,7 +5,7 @@ from lib.storage import (
     get_cursor,
     save_cursor
 )
-from lib.discord_client import send_transaction_notification, send_settlement_notification
+from lib.discord_client import send_transaction_notification, send_settlement_notification, send_error_notification
 from lib.settlement import calculate_settlement, format_settlement_message
 
 def handler(event, context):
@@ -17,11 +17,17 @@ def handler(event, context):
     
     # Check if monthly settlement
     is_monthly = any("MonthlySettlement" in r for r in resources)
-    if is_monthly:
-        _handle_monthly_settlement()
-    else:
-        # Default to daily scan
-        _handle_daily_scan()
+    
+    try:
+        if is_monthly:
+            _handle_monthly_settlement()
+        else:
+            # Default to daily scan
+            _handle_daily_scan()
+    except Exception as e:
+        print(f"Error during execution: {e}")
+        send_error_notification(str(e))
+        raise e
 
 def _handle_daily_scan():
     # Cursor-based sync

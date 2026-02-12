@@ -21,7 +21,7 @@ def verify_discord_signature(signature: str, timestamp: str, body: str) -> bool:
 
 import time
 
-def send_message(content: str, channel_id: str, components: list = None) -> bool:
+def send_message(content: str, channel_id: str, components: list = None, embeds: list = None) -> bool:
     """Sends a message to the specified Discord channel."""
     config = get_config()
     token = config.discord_bot_token
@@ -39,6 +39,8 @@ def send_message(content: str, channel_id: str, components: list = None) -> bool
     payload = {"content": content}
     if components:
         payload["components"] = components
+    if embeds:
+        payload["embeds"] = embeds
         
     try:
         response = requests.post(url, headers=headers, json=payload)
@@ -176,4 +178,18 @@ def send_transaction_notification(transactions: list[dict]) -> bool:
 def send_settlement_notification(message: str) -> bool:
     config = get_config()
     return send_message(message, config.discord_settlements_channel_id)
+
+def send_error_notification(error_message: str) -> bool:
+    """Sends an error notification to the Discord channel."""
+    config = get_config()
+    
+    # 0xE74C3C is Red
+    embed = {
+        "title": "🚨 System Error",
+        "description": f"```{error_message}```",
+        "color": 0xE74C3C 
+    }
+    
+    # Send to classifications channel as it's the main "admin" view usually
+    return send_message("", config.discord_classifications_channel_id, embeds=[embed])
 
