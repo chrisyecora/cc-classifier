@@ -22,6 +22,7 @@ def main():
         print("  python scripts/run_local.py settle [override_date]")
         print("  python scripts/run_local.py webhook <custom_id>")
         print("  python scripts/run_local.py update <json_string_or_file_path>")
+        print("  python scripts/run_local.py resend <transaction_id>")
         print("  python scripts/run_local.py reset")
         print("  python scripts/run_local.py dump")
         return
@@ -87,7 +88,10 @@ def main():
         # Construct Discord Interaction JSON
         body_json = {
             "type": 3, # MESSAGE_COMPONENT
-            "data": {"custom_id": custom_id},
+            "data": {
+                "custom_id": custom_id,
+                "component_type": 2 # Button
+            },
             "member": {"user": {"username": "LocalTester"}}
         }
         
@@ -162,6 +166,39 @@ def main():
             print("Update complete.")
         except Exception as e:
             print(f"Error updating item: {e}")
+
+    elif command == "resend":
+        if len(sys.argv) < 3:
+            print("Usage: python scripts/run_local.py resend <transaction_id>")
+            return
+
+        txn_id = sys.argv[2]
+        from lib.storage import get_transaction, read_users
+        from lib.discord_client import send_message, build_classification_embed, build_classification_components, build_post_classification_components
+        from config import get_config
+
+        print(f"Fetching transaction {txn_id}...")
+        txn = get_transaction(txn_id)
+        if not txn:
+            print(f"Error: Transaction {txn_id} not found in database.")
+            return
+
+        config = get_config()
+        config_users = read_users()
+        
+        # Decide which components to show
+        if txn.get('classification') or txn.get('excluded') == "true":
+            components = build_post_classification_components(txn_id)
+        else:
+            components = build_classification_components(txn_id)
+
+        embed = build_classification_embed(txn, config_users)
+        
+        print(f"Sending message to channel {config.discord_classifications_channel_id}...")
+        if send_message("", config.discord_classifications_channel_id, components=components, embeds=[embed]):
+            print("Success: Interactive message resent to Discord.")
+        else:
+            print("Error: Failed to send message to Discord.")
 
     elif command == "reset":
         print("--- Resetting DynamoDB Table (Deleting All Data) ---")

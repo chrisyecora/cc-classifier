@@ -194,62 +194,18 @@ def _build_update_response(interaction, txn, updated=True, action_user=None):
         
     config_users = read_users()
     classification = txn.get("classification", "")
-    classified_by = txn.get("classified_by", "")
-    percentage_str = txn.get("percentage", "")
-    note = txn.get("note", "")
-    excluded = txn.get("excluded") == "true"
     
-    display_cls = "Shared"
-    if classification == "A":
-        display_cls = config_users["user_a"]["name"]
-    elif classification == "B":
-        display_cls = config_users["user_b"]["name"]
-    elif classification == "S":
-        if percentage_str:
-            display_cls = f"Shared ({percentage_str}%)"
-        else:
-            display_cls = "Shared (50/50)"
-            
-    message_obj = interaction.get("message")
-    original_content = message_obj.get("content", "") if message_obj else ""
-    summary_text = f"Transaction {txn['transaction_id']}"
-    
-    # Try to extract original details if available, or use txn data
-    if original_content:
-        try:
-            lines = original_content.split('\n')
-            merchant = next((l.split(": ")[1] for l in lines if l.startswith("Merchant:")), txn.get("merchant", "Unknown"))
-            amount = next((l.split(": ")[1] for l in lines if l.startswith("Amount:")), txn.get("amount", "?"))
-            date = next((l.split(": ")[1] for l in lines if l.startswith("Date:")), txn.get("date", ""))
-            summary_text = f"{merchant} {amount} ({date})"
-        except Exception:
-            pass
-    else:
-        summary_text = f"{txn['merchant']} ${txn['amount']} ({txn['date']})"
-
     if updated:
-        components = build_post_classification_components(txn['transaction_id'])
-        
-        embed = {
-            "title": txn['merchant'],
-            "description": f"**${txn['amount']}** on {txn['date']}",
-            "color": 0x57F287, # Green
-            "fields": [
-            ]
-        }
-        
-        if excluded:
-            embed["color"] = 0x95A5A6 # Grey
-            embed["fields"].append({"name": "Status", "value": "**Ignored**", "inline": True})
+        if classification or txn.get("excluded") == "true":
+            components = build_post_classification_components(txn['transaction_id'])
         else:
-            embed["fields"].append({"name": "Classified As", "value": f"**{display_cls}**", "inline": True})
-            embed["fields"].append({"name": "By", "value": classified_by, "inline": True})
-        
-        if note:
-            embed["fields"].append({"name": "Note", "value": note, "inline": False})
+            components = build_classification_components(txn['transaction_id'])
             
+        embed = build_classification_embed(txn, config_users)
         return json_response(7, content="", components=components, embeds=[embed])
     else:
+        # Fallback for unexpected state
+        summary_text = f"{txn['merchant']} ${txn['amount']} ({txn['date']})"
         return json_response(7, f"{summary_text} ⚠️ Already classified", components=[])
 
 def json_response(type_code, content=None, components=None, embeds=None):
