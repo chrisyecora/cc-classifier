@@ -21,7 +21,10 @@ def main():
         print("  python scripts/run_local.py scan")
         print("  python scripts/run_local.py settle [override_date]")
         print("  python scripts/run_local.py webhook <custom_id>")
+        print("  python scripts/run_local.py update <json_string_or_file_path>")
+        print("  python scripts/run_local.py resend <transaction_id>")
         print("  python scripts/run_local.py reset")
+        print("  python scripts/run_local.py dump")
         return
 
     command = sys.argv[1]
@@ -85,7 +88,10 @@ def main():
         # Construct Discord Interaction JSON
         body_json = {
             "type": 3, # MESSAGE_COMPONENT
-            "data": {"custom_id": custom_id},
+            "data": {
+                "custom_id": custom_id,
+                "component_type": 2 # Button
+            },
             "member": {"user": {"username": "LocalTester"}}
         }
         
@@ -115,6 +121,85 @@ def main():
             # Restore verification
             lambdas.webhook.verify_discord_signature = original_verify
 
+    elif command == "update":
+        if len(sys.argv) < 3:
+            print("Usage: python scripts/run_local.py update <json_string_or_file_path>")
+            return
+
+        input_data = sys.argv[2]
+        import json
+        from decimal import Decimal
+
+        # Try to read as file first
+        if os.path.isfile(input_data):
+            try:
+                with open(input_data, 'r') as f:
+                    content = f.read()
+            except Exception as e:
+                print(f"Error reading file: {e}")
+                return
+        else:
+            content = input_data
+
+        try:
+            item_data = json.loads(content, parse_float=Decimal)
+        except json.JSONDecodeError as e:
+            print(f"Error parsing JSON: {e}")
+            return
+
+        from lib.storage import get_table, PK_TRX
+        
+        if 'transaction_id' not in item_data:
+            print("Error: JSON must contain 'transaction_id'")
+            return
+
+        # Prepare item for DynamoDB
+        item = item_data.copy()
+        item['pk'] = PK_TRX
+        item['sk'] = item_data['transaction_id']
+        
+        print(f"Updating transaction {item['sk']}...")
+        
+        try:
+            table = get_table()
+            table.put_item(Item=item)
+            print("Update complete.")
+        except Exception as e:
+            print(f"Error updating item: {e}")
+
+    elif command == "resend":
+        if len(sys.argv) < 3:
+            print("Usage: python scripts/run_local.py resend <transaction_id>")
+            return
+
+        txn_id = sys.argv[2]
+        from lib.storage import get_transaction, read_users
+        from lib.discord_client import send_message, build_classification_embed, build_classification_components, build_post_classification_components
+        from config import get_config
+
+        print(f"Fetching transaction {txn_id}...")
+        txn = get_transaction(txn_id)
+        if not txn:
+            print(f"Error: Transaction {txn_id} not found in database.")
+            return
+
+        config = get_config()
+        config_users = read_users()
+        
+        # Decide which components to show
+        if txn.get('classification') or txn.get('excluded') == "true":
+            components = build_post_classification_components(txn_id)
+        else:
+            components = build_classification_components(txn_id)
+
+        embed = build_classification_embed(txn, config_users)
+        
+        print(f"Sending message to channel {config.discord_classifications_channel_id}...")
+        if send_message("", config.discord_classifications_channel_id, components=components, embeds=[embed]):
+            print("Success: Interactive message resent to Discord.")
+        else:
+            print("Error: Failed to send message to Discord.")
+
     elif command == "reset":
         print("--- Resetting DynamoDB Table (Deleting All Data) ---")
         confirm = input("Are you sure you want to delete ALL data? (yes/no): ")
@@ -139,6 +224,33 @@ def main():
                     }
                 )
         print("Table cleared.")
+
+    elif command == "dump":
+        print("--- Dumping DynamoDB Table ---")
+        from lib.storage import get_table
+        import json
+        from decimal import Decimal
+
+        class DecimalEncoder(json.JSONEncoder):
+            def default(self, o):
+                if isinstance(o, Decimal):
+                    return str(o)
+                return super(DecimalEncoder, self).default(o)
+
+        table = get_table()
+        try:
+            response = table.scan()
+            items = response.get('Items', [])
+            
+            # Handle pagination
+            while 'LastEvaluatedKey' in response:
+                response = table.scan(ExclusiveStartKey=response['LastEvaluatedKey'])
+                items.extend(response.get('Items', []))
+            
+            print(json.dumps(items, cls=DecimalEncoder, indent=2))
+            print(f"\nTotal items: {len(items)}")
+        except Exception as e:
+            print(f"Error dumping table: {e}")
 
     else:
         print(f"Unknown command: {command}")

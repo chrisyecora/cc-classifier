@@ -150,6 +150,47 @@ def build_note_modal(txn_id: str, current_note: str = "") -> dict:
         }])]
     }
 
+def build_classification_embed(txn: dict, config_users: dict) -> dict:
+    """Builds the rich embed showing a transaction's classification status."""
+    classification = txn.get("classification", "")
+    classified_by = txn.get("classified_by", "")
+    percentage_str = txn.get("percentage", "")
+    note = txn.get("note", "")
+    excluded = txn.get("excluded") == "true"
+    
+    display_cls = "Shared"
+    if classification == "A":
+        display_cls = config_users["user_a"]["name"]
+    elif classification == "B":
+        display_cls = config_users["user_b"]["name"]
+    elif classification == "S":
+        if percentage_str:
+            display_cls = f"Shared ({percentage_str}%)"
+        else:
+            display_cls = "Shared (50/50)"
+
+    embed = {
+        "title": txn.get('merchant', 'Unknown Merchant'),
+        "description": f"**${txn.get('amount', '0.00')}** on {txn.get('date', 'Unknown Date')}",
+        "color": 0x57F287, # Green
+        "fields": []
+    }
+    
+    if excluded:
+        embed["color"] = 0x95A5A6 # Grey
+        embed["fields"].append({"name": "Status", "value": "**Ignored**", "inline": True})
+    elif classification:
+        embed["fields"].append({"name": "Classified As", "value": f"**{display_cls}**", "inline": True})
+        embed["fields"].append({"name": "By", "value": classified_by, "inline": True})
+    else:
+        embed["color"] = 0x3498DB # Blue (Unclassified)
+        embed["fields"].append({"name": "Status", "value": "**Pending Classification**", "inline": True})
+    
+    if note:
+        embed["fields"].append({"name": "Note", "value": note, "inline": False})
+        
+    return embed
+
 def send_transaction_notification(transactions: list[dict]) -> bool:
     """
     Sends a notification with interactive buttons and dropdown for each unclassified transaction.
