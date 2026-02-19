@@ -5,7 +5,8 @@ from lib.discord_client import (
     create_action_row, 
     build_classification_components,
     build_post_classification_components,
-    build_note_modal
+    build_note_modal,
+    build_classification_embed
 )
 from lib.storage import update_transaction, read_users, reset_transaction, read_transactions, update_transaction_note, exclude_transaction, get_transaction
 
