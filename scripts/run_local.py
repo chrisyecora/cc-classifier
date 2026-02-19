@@ -22,6 +22,7 @@ def main():
         print("  python scripts/run_local.py settle [override_date]")
         print("  python scripts/run_local.py webhook <custom_id>")
         print("  python scripts/run_local.py reset")
+        print("  python scripts/run_local.py dump")
         return
 
     command = sys.argv[1]
@@ -139,6 +140,33 @@ def main():
                     }
                 )
         print("Table cleared.")
+
+    elif command == "dump":
+        print("--- Dumping DynamoDB Table ---")
+        from lib.storage import get_table
+        import json
+        from decimal import Decimal
+
+        class DecimalEncoder(json.JSONEncoder):
+            def default(self, o):
+                if isinstance(o, Decimal):
+                    return str(o)
+                return super(DecimalEncoder, self).default(o)
+
+        table = get_table()
+        try:
+            response = table.scan()
+            items = response.get('Items', [])
+            
+            # Handle pagination
+            while 'LastEvaluatedKey' in response:
+                response = table.scan(ExclusiveStartKey=response['LastEvaluatedKey'])
+                items.extend(response.get('Items', []))
+            
+            print(json.dumps(items, cls=DecimalEncoder, indent=2))
+            print(f"\nTotal items: {len(items)}")
+        except Exception as e:
+            print(f"Error dumping table: {e}")
 
     else:
         print(f"Unknown command: {command}")
