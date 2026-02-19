@@ -7,7 +7,7 @@ from lib.discord_client import (
     build_post_classification_components,
     build_note_modal
 )
-from lib.storage import update_transaction, read_users, reset_transaction, read_transactions, update_transaction_note, exclude_transaction
+from lib.storage import update_transaction, read_users, reset_transaction, read_transactions, update_transaction_note, exclude_transaction, get_transaction
 
 def handler(event, context):
     headers = event.get("headers", {})
@@ -76,8 +76,7 @@ def handle_modal_submit(interaction):
         update_transaction_note(txn_id, note_content)
         
         # Refresh message
-        all_txns = read_transactions()
-        txn = next((t for t in all_txns if t["transaction_id"] == txn_id), None)
+        txn = get_transaction(txn_id)
         if not txn: return json_response(4, "Transaction not found.")
         
         return _build_update_response(interaction, txn)
@@ -88,8 +87,7 @@ def handle_modal_submit(interaction):
     except (KeyError, ValueError):
         return json_response(4, "Invalid amount format.")
         
-    all_txns = read_transactions()
-    txn = next((t for t in all_txns if t["transaction_id"] == txn_id), None)
+    txn = get_transaction(txn_id)
     if not txn: return json_response(4, "Transaction not found.")
         
     total_amount = float(txn["amount"])
@@ -122,8 +120,7 @@ def handle_button_click(interaction):
 
     if action == "note":
         txn_id = parts[1]
-        all_txns = read_transactions()
-        txn = next((t for t in all_txns if t["transaction_id"] == txn_id), None)
+        txn = get_transaction(txn_id)
         current_note = txn.get("note", "") if txn else ""
         
         modal = build_note_modal(txn_id, current_note)
@@ -168,8 +165,7 @@ def handle_button_click(interaction):
 
 def handle_undo(interaction, txn_id):
     if reset_transaction(txn_id):
-        all_txns = read_transactions()
-        txn = next((t for t in all_txns if t["transaction_id"] == txn_id), None)
+        txn = get_transaction(txn_id)
         if txn:
             content = f"**New Transaction**\nMerchant: {txn['merchant']}\nAmount: ${txn['amount']}\nDate: {txn['date']}"
             components = build_classification_components(txn_id)
@@ -178,21 +174,19 @@ def handle_undo(interaction, txn_id):
 
 def _process_exclude(interaction, txn_id):
     if exclude_transaction(txn_id):
-        all_txns = read_transactions()
-        txn = next((t for t in all_txns if t["transaction_id"] == txn_id), None)
+        txn = get_transaction(txn_id)
         return _build_update_response(interaction, txn)
     return json_response(4, "Error: Could not exclude transaction.")
 
 def _process_update(interaction, txn_id, classification, user, percentage):
-    config_users = read_users()
-    
     updated = update_transaction(txn_id, classification, user, percentage)
     
     # Reload transaction to get latest state (including note if any)
-    all_txns = read_transactions()
-    txn = next((t for t in all_txns if t["transaction_id"] == txn_id), None)
+    txn = get_transaction(txn_id)
     
-    return _build_update_response(interaction, txn, updated, user)
+    # Even if updated is False (already classified), we return the success response 
+    # so the user sees the current classification and can undo if needed.
+    return _build_update_response(interaction, txn, updated=True, action_user=user)
 
 def _build_update_response(interaction, txn, updated=True, action_user=None):
     if not txn:

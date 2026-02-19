@@ -21,6 +21,7 @@ def main():
         print("  python scripts/run_local.py scan")
         print("  python scripts/run_local.py settle [override_date]")
         print("  python scripts/run_local.py webhook <custom_id>")
+        print("  python scripts/run_local.py update <json_string_or_file_path>")
         print("  python scripts/run_local.py reset")
         print("  python scripts/run_local.py dump")
         return
@@ -115,6 +116,52 @@ def main():
         finally:
             # Restore verification
             lambdas.webhook.verify_discord_signature = original_verify
+
+    elif command == "update":
+        if len(sys.argv) < 3:
+            print("Usage: python scripts/run_local.py update <json_string_or_file_path>")
+            return
+
+        input_data = sys.argv[2]
+        import json
+        from decimal import Decimal
+
+        # Try to read as file first
+        if os.path.isfile(input_data):
+            try:
+                with open(input_data, 'r') as f:
+                    content = f.read()
+            except Exception as e:
+                print(f"Error reading file: {e}")
+                return
+        else:
+            content = input_data
+
+        try:
+            item_data = json.loads(content, parse_float=Decimal)
+        except json.JSONDecodeError as e:
+            print(f"Error parsing JSON: {e}")
+            return
+
+        from lib.storage import get_table, PK_TRX
+        
+        if 'transaction_id' not in item_data:
+            print("Error: JSON must contain 'transaction_id'")
+            return
+
+        # Prepare item for DynamoDB
+        item = item_data.copy()
+        item['pk'] = PK_TRX
+        item['sk'] = item_data['transaction_id']
+        
+        print(f"Updating transaction {item['sk']}...")
+        
+        try:
+            table = get_table()
+            table.put_item(Item=item)
+            print("Update complete.")
+        except Exception as e:
+            print(f"Error updating item: {e}")
 
     elif command == "reset":
         print("--- Resetting DynamoDB Table (Deleting All Data) ---")

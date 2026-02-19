@@ -35,6 +35,17 @@ def read_transactions() -> list[dict]:
         
     return _map_ddb_items_to_model(items)
 
+def get_transaction(transaction_id: str) -> dict | None:
+    """
+    Retrieves a single transaction by ID.
+    """
+    table = get_table()
+    response = table.get_item(Key={'pk': PK_TRX, 'sk': transaction_id})
+    item = response.get('Item')
+    if item:
+        return _map_ddb_items_to_model([item])[0]
+    return None
+
 def write_transactions(transactions: list[dict]) -> None:
     """
     Overwrites/Inserts transactions.
