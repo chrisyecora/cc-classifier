@@ -8,9 +8,13 @@ from lib.discord_client import (
     build_note_modal,
     build_classification_embed
 )
-from lib.storage import update_transaction, read_users, reset_transaction, read_transactions, update_transaction_note, exclude_transaction, get_transaction
+from lib.storage import update_transaction, read_users, reset_transaction, update_transaction_note, exclude_transaction, get_transaction
 
-def handler(event, context):
+DISCORD_INTERACTION_PING = 1
+DISCORD_INTERACTION_MESSAGE_COMPONENT = 3
+DISCORD_INTERACTION_MODAL_SUBMIT = 5
+
+def handler(event, _context):
     headers = event.get("headers", {})
     signature = headers.get("x-signature-ed25519") or headers.get("X-Signature-Ed25519")
     timestamp = headers.get("x-signature-timestamp") or headers.get("X-Signature-Timestamp")
@@ -25,10 +29,10 @@ def handler(event, context):
     interaction = json.loads(body)
     t = interaction.get("type")
     
-    if t == 1: # PING
+    if t == DISCORD_INTERACTION_PING:
         return {"statusCode": 200, "body": json.dumps({"type": 1})}
         
-    if t == 3: # MESSAGE_COMPONENT
+    if t == DISCORD_INTERACTION_MESSAGE_COMPONENT:
         data = interaction.get("data", {})
         component_type = data.get("component_type")
         if component_type == 2:
@@ -36,7 +40,7 @@ def handler(event, context):
         elif component_type == 3:
             return handle_select_menu(interaction)
             
-    if t == 5: # MODAL_SUBMIT
+    if t == DISCORD_INTERACTION_MODAL_SUBMIT:
         return handle_modal_submit(interaction)
             
     return {"statusCode": 400, "body": "Unknown interaction type"}
@@ -187,9 +191,9 @@ def _process_update(interaction, txn_id, classification, user, percentage):
     
     # Even if updated is False (already classified), we return the success response 
     # so the user sees the current classification and can undo if needed.
-    return _build_update_response(interaction, txn, updated=True, action_user=user)
+    return _build_update_response(interaction, txn, updated=True)
 
-def _build_update_response(interaction, txn, updated=True, action_user=None):
+def _build_update_response(interaction, txn, updated=True):
     if not txn:
         return json_response(4, "Transaction not found.")
         

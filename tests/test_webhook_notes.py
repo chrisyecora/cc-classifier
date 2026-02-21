@@ -5,10 +5,6 @@ from unittest.mock import MagicMock
 from lambdas import webhook
 
 @pytest.fixture
-def mock_storage(mocker):
-    return mocker.patch("lambdas.webhook.read_transactions")
-
-@pytest.fixture
 def mock_update(mocker):
     return mocker.patch("lambdas.webhook.update_transaction")
 

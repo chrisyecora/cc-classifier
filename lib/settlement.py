@@ -6,10 +6,8 @@ from config import get_config
 
 @dataclass
 class UserSettlement:
-    user_id: str
     user_name: str
     total_owed: Decimal
-    transaction_count: int
 
 @dataclass
 class SettlementResult:
@@ -26,8 +24,6 @@ def calculate_settlement(settlement_date: date) -> SettlementResult:
     
     user_a_total = Decimal("0.00")
     user_b_total = Decimal("0.00")
-    user_a_count = 0
-    user_b_count = 0
     unclassified_count = 0
     
     for txn in transactions:
@@ -43,10 +39,8 @@ def calculate_settlement(settlement_date: date) -> SettlementResult:
             
         if classification == "A":
             user_a_total += amount
-            user_a_count += 1
         elif classification == "B":
             user_b_total += amount
-            user_b_count += 1
         elif classification == "S":
             # Shared
             classifier = txn.get("classified_by")
@@ -80,11 +74,6 @@ def calculate_settlement(settlement_date: date) -> SettlementResult:
                 half = amount / Decimal("2")
                 user_a_total += half
                 user_b_total += half
-                
-            # Shared counts for both? Or just 1 total?
-            # Let's count for both as "involvement"
-            user_a_count += 1
-            user_b_count += 1
 
     # Round totals
     user_a_total = user_a_total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -94,16 +83,12 @@ def calculate_settlement(settlement_date: date) -> SettlementResult:
         statement_start=start_date,
         statement_end=end_date,
         user_a=UserSettlement(
-            user_id="user_a", # Placeholder ID
             user_name=config.user_a_name,
-            total_owed=user_a_total,
-            transaction_count=user_a_count
+            total_owed=user_a_total
         ),
         user_b=UserSettlement(
-            user_id="user_b",
             user_name=config.user_b_name,
-            total_owed=user_b_total,
-            transaction_count=user_b_count
+            total_owed=user_b_total
         ),
         unclassified_count=unclassified_count
     )

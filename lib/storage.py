@@ -1,5 +1,5 @@
 import boto3
-from boto3.dynamodb.conditions import Key, Attr
+from boto3.dynamodb.conditions import Key
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from config import get_config
@@ -13,6 +13,17 @@ def get_table():
     config = get_config()
     dynamodb = boto3.resource("dynamodb")
     return dynamodb.Table(config.table_name)
+
+def get_transaction(transaction_id: str) -> dict | None:
+    """
+    Retrieves a single transaction by ID.
+    """
+    table = get_table()
+    response = table.get_item(Key={'pk': PK_TRX, 'sk': transaction_id})
+    item = response.get('Item')
+    if item:
+        return _map_ddb_items_to_model([item])[0]
+    return None
 
 def read_transactions() -> list[dict]:
     """
@@ -35,17 +46,6 @@ def read_transactions() -> list[dict]:
         
     return _map_ddb_items_to_model(items)
 
-def get_transaction(transaction_id: str) -> dict | None:
-    """
-    Retrieves a single transaction by ID.
-    """
-    table = get_table()
-    response = table.get_item(Key={'pk': PK_TRX, 'sk': transaction_id})
-    item = response.get('Item')
-    if item:
-        return _map_ddb_items_to_model([item])[0]
-    return None
-
 def write_transactions(transactions: list[dict]) -> None:
     """
     Overwrites/Inserts transactions.
@@ -58,27 +58,50 @@ def write_transactions(transactions: list[dict]) -> None:
 
 def append_transactions(new_transactions: list[dict]) -> int:
     """
-    Appends new transactions.
-    Only inserts if transaction_id (sk) does not exist.
+    Appends new transactions using TransactWriteItems for efficiency.
+    Falls back to individual put_items if the transaction batch has collisions.
     """
     if not new_transactions:
         return 0
     
     table = get_table()
-    count = 0
+    dynamodb_client = boto3.client('dynamodb', region_name=table.meta.client.meta.region_name)
+    config = get_config()
+    table_name = config.table_name
     
-    # batch_writer doesn't support ConditionExpression, so we loop.
-    # For daily volume (startups), this is fine.
-    for txn in new_transactions:
-        item = _map_model_to_ddb_item(txn)
+    from boto3.dynamodb.types import TypeSerializer
+    serializer = TypeSerializer()
+    
+    count = 0
+    for i in range(0, len(new_transactions), 100):
+        batch = new_transactions[i:i+100]
+        transact_items = []
+        for txn in batch:
+            item = _map_model_to_ddb_item(txn)
+            marshalled_item = {k: serializer.serialize(v) for k, v in item.items()}
+            transact_items.append({
+                'Put': {
+                    'TableName': table_name,
+                    'Item': marshalled_item,
+                    'ConditionExpression': 'attribute_not_exists(sk)'
+                }
+            })
+            
         try:
-            table.put_item(
-                Item=item,
-                ConditionExpression="attribute_not_exists(sk)"
-            )
-            count += 1
-        except boto3.client('dynamodb').exceptions.ConditionalCheckFailedException:
-            pass
+            dynamodb_client.transact_write_items(TransactItems=transact_items)
+            count += len(batch)
+        except dynamodb_client.exceptions.TransactionCanceledException:
+            # Fallback to individual put_item for this batch
+            for txn in batch:
+                item = _map_model_to_ddb_item(txn)
+                try:
+                    table.put_item(
+                        Item=item,
+                        ConditionExpression="attribute_not_exists(sk)"
+                    )
+                    count += 1
+                except dynamodb_client.exceptions.ConditionalCheckFailedException:
+                    pass
             
     return count
 
@@ -188,24 +211,6 @@ def update_transaction_details(transaction_id: str, amount: str, date_val: str, 
         print(f"Error updating transaction details {transaction_id}: {e}")
         return False
 
-def get_unclassified_transactions() -> list[dict]:
-    # This is expensive (Scan). 
-    # Optimization: Query by DateIndex for last X months?
-    # For now, Scan is acceptable for personal scale.
-    table = get_table()
-    scan_kwargs = {
-        'FilterExpression': Key('pk').eq(PK_TRX) & (Attr('classification').eq("") | Attr('classification').not_exists()) & (Attr('excluded').ne("true"))
-    }
-    response = table.scan(**scan_kwargs)
-    items = response.get('Items', [])
-    
-    while 'LastEvaluatedKey' in response:
-        scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
-        response = table.scan(**scan_kwargs)
-        items.extend(response.get('Items', []))
-        
-    return _map_ddb_items_to_model(items)
-
 def get_statement_period(settlement_date: date) -> tuple[date, date]:
     # Same logic as before
     prev_month = settlement_date - relativedelta(months=1)
@@ -239,7 +244,6 @@ def _map_model_to_ddb_item(txn: dict) -> dict:
     return item
 
 def _map_ddb_items_to_model(items: list[dict]) -> list[dict]:
-    # Strip PK/SK
     result = []
     for item in items:
         # Convert Decimals to float/str if needed?
@@ -249,7 +253,6 @@ def _map_ddb_items_to_model(items: list[dict]) -> list[dict]:
         if 'transaction_id' not in item and 'sk' in item:
             item['transaction_id'] = item['sk']
             
-        # Clean up internal keys
         if 'pk' in item: del item['pk']
         if 'sk' in item: del item['sk']
         
@@ -264,16 +267,6 @@ def read_users() -> dict[str, dict]:
         "user_a": {"name": config.user_a_name},
         "user_b": {"name": config.user_b_name}
     }
-
-def get_user_by_phone(phone: str) -> dict | None:
-    # Legacy support
-    return None
-
-def get_other_user(user_id: str) -> dict:
-    users = read_users()
-    if user_id == "user_a":
-        return {"id": "user_b", **users["user_b"]}
-    return {"id": "user_a", **users["user_a"]}
 
 # --- Cursor Management ---
 
