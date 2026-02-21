@@ -107,7 +107,7 @@ def main():
         # Mock signature verification for local run
         import lambdas.webhook
         original_verify = lambdas.webhook.verify_discord_signature
-        lambdas.webhook.verify_discord_signature = lambda s, t, b: True
+        lambdas.webhook.verify_discord_signature = lambda _s, _t, _b: True
         
         try:
             response = webhook_handler(event, None)
@@ -207,8 +207,7 @@ def main():
             print("Aborted.")
             return
 
-        from lib.storage import get_table, PK_TRX, PK_CONFIG
-        import boto3
+        from lib.storage import get_table, PK_TRX
         
         table = get_table()
         

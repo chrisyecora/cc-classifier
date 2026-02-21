@@ -64,3 +64,29 @@ def dynamodb_mock(env_setup):
 # But we must update them because s3_mock returned an InMemoryS3 object, 
 # while dynamodb_mock returns a boto3 Table resource.
 # So I won't provide an alias, I'll force update of tests.
+
+def read_transactions() -> list[dict]:
+    from lib.storage import get_table, PK_TRX, _map_ddb_items_to_model
+    from boto3.dynamodb.conditions import Key
+    table = get_table()
+    response = table.scan(
+        FilterExpression=Key('pk').eq(PK_TRX)
+    )
+    items = response.get('Items', [])
+    
+    while 'LastEvaluatedKey' in response:
+        response = table.scan(
+            FilterExpression=Key('pk').eq(PK_TRX),
+            ExclusiveStartKey=response['LastEvaluatedKey']
+        )
+        items.extend(response.get('Items', []))
+        
+    return _map_ddb_items_to_model(items)
+
+def write_transactions(transactions: list[dict]) -> None:
+    from lib.storage import get_table, _map_model_to_ddb_item
+    table = get_table()
+    with table.batch_writer() as batch:
+        for txn in transactions:
+            item = _map_model_to_ddb_item(txn)
+            batch.put_item(Item=item)

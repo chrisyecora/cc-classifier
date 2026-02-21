@@ -8,13 +8,13 @@ from lib.discord_client import (
     build_note_modal,
     build_classification_embed
 )
-from lib.storage import update_transaction, read_users, reset_transaction, read_transactions, update_transaction_note, exclude_transaction, get_transaction
+from lib.storage import update_transaction, read_users, reset_transaction, update_transaction_note, exclude_transaction, get_transaction
 
 DISCORD_INTERACTION_PING = 1
 DISCORD_INTERACTION_MESSAGE_COMPONENT = 3
 DISCORD_INTERACTION_MODAL_SUBMIT = 5
 
-def handler(event, context):
+def handler(event, _context):
     headers = event.get("headers", {})
     signature = headers.get("x-signature-ed25519") or headers.get("X-Signature-Ed25519")
     timestamp = headers.get("x-signature-timestamp") or headers.get("X-Signature-Timestamp")
@@ -191,9 +191,9 @@ def _process_update(interaction, txn_id, classification, user, percentage):
     
     # Even if updated is False (already classified), we return the success response 
     # so the user sees the current classification and can undo if needed.
-    return _build_update_response(interaction, txn, updated=True, action_user=user)
+    return _build_update_response(interaction, txn, updated=True)
 
-def _build_update_response(interaction, txn, updated=True, action_user=None):
+def _build_update_response(interaction, txn, updated=True):
     if not txn:
         return json_response(4, "Transaction not found.")
         

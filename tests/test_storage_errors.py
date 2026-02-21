@@ -8,8 +8,6 @@ from lib.storage import (
     reset_transaction,
     delete_transaction,
     update_transaction_details,
-    get_user_by_phone,
-    get_other_user,
     get_cursor,
     save_cursor,
     get_transaction
@@ -88,18 +86,6 @@ def test_update_transaction_details_exception(mocker, env_setup):
     mocker.patch("lib.storage.get_table", return_value=mock_table)
     assert update_transaction_details("1", "10", "2023", "M", "N") is False
 
-def test_get_user_by_phone():
-    assert get_user_by_phone("123") is None
-
-def test_get_other_user(mocker, env_setup):
-    mock_users = {
-        "user_a": {"name": "Alice"},
-        "user_b": {"name": "Bob"}
-    }
-    mocker.patch("lib.storage.read_users", return_value=mock_users)
-    assert get_other_user("user_a") == {"id": "user_b", "name": "Bob"}
-    assert get_other_user("user_b") == {"id": "user_a", "name": "Alice"}
-    
 def test_get_cursor_none(dynamodb_mock, env_setup):
     # Missing item
     assert get_cursor() is None

@@ -11,7 +11,7 @@ from lib.storage import (
 from lib.discord_client import send_transaction_notification, send_settlement_notification, send_error_notification
 from lib.settlement import calculate_settlement, format_settlement_message
 
-def handler(event, context):
+def handler(event, _context):
     """
     Handles scheduled events from EventBridge.
     Route based on resources ARN or specific detail-type if available.

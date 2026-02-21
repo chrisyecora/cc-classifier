@@ -1,5 +1,5 @@
 import boto3
-from boto3.dynamodb.conditions import Key, Attr
+from boto3.dynamodb.conditions import Key
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from config import get_config
@@ -13,6 +13,17 @@ def get_table():
     config = get_config()
     dynamodb = boto3.resource("dynamodb")
     return dynamodb.Table(config.table_name)
+
+def get_transaction(transaction_id: str) -> dict | None:
+    """
+    Retrieves a single transaction by ID.
+    """
+    table = get_table()
+    response = table.get_item(Key={'pk': PK_TRX, 'sk': transaction_id})
+    item = response.get('Item')
+    if item:
+        return _map_ddb_items_to_model([item])[0]
+    return None
 
 def read_transactions() -> list[dict]:
     """
@@ -34,17 +45,6 @@ def read_transactions() -> list[dict]:
         items.extend(response.get('Items', []))
         
     return _map_ddb_items_to_model(items)
-
-def get_transaction(transaction_id: str) -> dict | None:
-    """
-    Retrieves a single transaction by ID.
-    """
-    table = get_table()
-    response = table.get_item(Key={'pk': PK_TRX, 'sk': transaction_id})
-    item = response.get('Item')
-    if item:
-        return _map_ddb_items_to_model([item])[0]
-    return None
 
 def write_transactions(transactions: list[dict]) -> None:
     """
@@ -267,16 +267,6 @@ def read_users() -> dict[str, dict]:
         "user_a": {"name": config.user_a_name},
         "user_b": {"name": config.user_b_name}
     }
-
-def get_user_by_phone(phone: str) -> dict | None:
-    # Legacy support
-    return None
-
-def get_other_user(user_id: str) -> dict:
-    users = read_users()
-    if user_id == "user_a":
-        return {"id": "user_b", **users["user_b"]}
-    return {"id": "user_a", **users["user_a"]}
 
 # --- Cursor Management ---
 
