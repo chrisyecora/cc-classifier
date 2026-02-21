@@ -1,4 +1,3 @@
-import pytest
 from lib.storage import get_cursor, save_cursor
 
 def test_get_cursor_missing(dynamodb_mock, env_setup):

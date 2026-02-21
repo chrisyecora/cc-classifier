@@ -1,0 +1,60 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1 # Change to your preferred AWS region
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-mock moto
+
+      - name: Run Tests
+        run: |
+          pytest tests/
+
+      - name: Setup AWS SAM
+        uses: aws-actions/setup-sam@v2
+
+      - name: Build SAM Application
+        run: sam build
+
+      - name: Deploy SAM Application
+        run: >
+          sam deploy
+          --no-confirm-changeset
+          --no-fail-on-empty-changeset
+          --stack-name credit-card-tracker-prod
+          --resolve-s3
+          --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM
+          --parameter-overrides
+          Environment=prod
+          DiscordClassificationsChannelId=${{ vars.DISCORD_CLASSIFICATIONS_CHANNEL_ID }}
+          DiscordSettlementsChannelId=${{ vars.DISCORD_SETTLEMENTS_CHANNEL_ID }}
+          PlaidEnv=${{ vars.PLAID_ENV }}
+          UserAName=${{ vars.USER_A_NAME }}
+          UserBName=${{ vars.USER_B_NAME }}
+          DiscordUserA=${{ vars.DISCORD_USER_A }}
+          DiscordUserB=${{ vars.DISCORD_USER_B }}

@@ -1,4 +1,3 @@
-import pytest
 from lib.discord_client import (
     verify_discord_signature,
     send_message,

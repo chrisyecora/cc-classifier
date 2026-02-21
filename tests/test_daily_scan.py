@@ -1,5 +1,4 @@
 import pytest
-from datetime import date
 from lambdas.daily_scan import handler
 
 def test_handler_daily_scan_cursor(mocker, env_setup):
@@ -57,7 +56,7 @@ def test_handler_monthly_settlement(mocker, env_setup):
     mock_calculate.return_value.user_a.total_owed = "100.00"
     mock_calculate.return_value.user_b.total_owed = "50.00"
     
-    mock_format = mocker.patch("lambdas.daily_scan.format_settlement_message", return_value="Msg")
+    mocker.patch("lambdas.daily_scan.format_settlement_message", return_value="Msg")
     mock_send = mocker.patch("lambdas.daily_scan.send_settlement_notification")
     
     handler(event, None)

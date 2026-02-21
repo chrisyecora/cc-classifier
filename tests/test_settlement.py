@@ -1,7 +1,6 @@
 from datetime import date
 from decimal import Decimal
-import pytest
-from lib.settlement import calculate_settlement, SettlementResult, UserSettlement
+from lib.settlement import calculate_settlement
 
 # Dummy transaction structure for mocking
 def make_transaction(amount, classification, percentage=None, classifier="Alex"):
@@ -78,7 +77,7 @@ def test_rounding(mocker, env_setup):
     # Decimal default rounding is ROUND_HALF_EVEN (Banker's).
     # 0.005 -> 0.00.
     
-    result = calculate_settlement(date(2026, 2, 1))
+    calculate_settlement(date(2026, 2, 1))
     # We should define a rounding policy. Standard 2 decimal places.
     # If 0.01 split, someone pays 0.01, someone 0? Or 0.005 each.
     # Let's see what default Decimal implementation does.

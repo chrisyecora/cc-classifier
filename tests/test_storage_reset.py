@@ -1,4 +1,3 @@
-import pytest
 from lib.storage import write_transactions, read_transactions, reset_transaction
 
 def test_reset_transaction(dynamodb_mock, env_setup):

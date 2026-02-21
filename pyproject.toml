@@ -1,0 +1,8 @@
+[tool.ruff]
+line-length = 120
+extend-exclude = [".venv", ".aws-sam"]
+
+[tool.ruff.lint]
+# Ignore E701 (multiple statements on one line - colon) 
+# and E402 (module level import not at top of file)
+ignore = ["E701", "E402"]

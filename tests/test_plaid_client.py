@@ -1,5 +1,4 @@
-import pytest
-from lib.plaid_client import fetch_new_transactions, get_plaid_client
+from lib.plaid_client import fetch_new_transactions
 
 # Mock data
 SAMPLE_PLAID_TRANSACTIONS = [

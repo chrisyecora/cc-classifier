@@ -1,4 +1,3 @@
-import pytest
 from lib.storage import (
     read_transactions,
     write_transactions,

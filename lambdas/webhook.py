@@ -1,8 +1,6 @@
 import json
 from lib.discord_client import (
     verify_discord_signature, 
-    create_button, 
-    create_action_row, 
     build_classification_components,
     build_post_classification_components,
     build_note_modal,
@@ -184,7 +182,7 @@ def _process_exclude(interaction, txn_id):
     return json_response(4, "Error: Could not exclude transaction.")
 
 def _process_update(interaction, txn_id, classification, user, percentage):
-    updated = update_transaction(txn_id, classification, user, percentage)
+    update_transaction(txn_id, classification, user, percentage)
     
     # Reload transaction to get latest state (including note if any)
     txn = get_transaction(txn_id)

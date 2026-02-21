@@ -8,15 +8,6 @@ Parameters:
     Default: dev
     AllowedValues: [dev, prod]
     
-  # Discord Configuration
-  DiscordBotToken:
-    Type: String
-    NoEcho: true
-    Description: Bot Token from Discord Developer Portal
-  DiscordPublicKey:
-    Type: String
-    NoEcho: true
-    Description: Public Key from Discord Developer Portal
   DiscordClassificationsChannelId:
     Type: String
     Description: Channel ID for transaction classification
@@ -25,15 +16,6 @@ Parameters:
     Description: Channel ID for monthly settlements
     
   # Plaid Configuration
-  PlaidClientId:
-    Type: String
-    NoEcho: true
-  PlaidSecret:
-    Type: String
-    NoEcho: true
-  PlaidAccessToken:
-    Type: String
-    NoEcho: true
   PlaidEnv:
     Type: String
     Default: sandbox
@@ -63,14 +45,9 @@ Globals:
         ENVIRONMENT: !Ref Environment
         TABLE_NAME: !Ref TransactionsTable
         
-        DISCORD_BOT_TOKEN: !Ref DiscordBotToken
-        DISCORD_PUBLIC_KEY: !Ref DiscordPublicKey
         DISCORD_CLASSIFICATIONS_CHANNEL_ID: !Ref DiscordClassificationsChannelId
         DISCORD_SETTLEMENTS_CHANNEL_ID: !Ref DiscordSettlementsChannelId
         
-        PLAID_CLIENT_ID: !Ref PlaidClientId
-        PLAID_SECRET: !Ref PlaidSecret
-        PLAID_ACCESS_TOKEN: !Ref PlaidAccessToken
         PLAID_ENV: !Ref PlaidEnv
         
         USER_A_NAME: !Ref UserAName
@@ -114,6 +91,11 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TransactionsTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:cc-classifier/${Environment}/secrets-*
       Events:
         DailySchedule:
           Type: Schedule
@@ -136,6 +118,11 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TransactionsTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:cc-classifier/${Environment}/secrets-*
       Events:
         DiscordWebhook:
           Type: Api

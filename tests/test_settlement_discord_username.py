@@ -1,8 +1,7 @@
 
 from datetime import date
 from decimal import Decimal
-import pytest
-from lib.settlement import calculate_settlement, SettlementResult
+from lib.settlement import calculate_settlement
 
 def make_transaction(amount, classification, percentage=None, classifier="chrisy076"):
     return {

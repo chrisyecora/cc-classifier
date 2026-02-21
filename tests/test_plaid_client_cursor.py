@@ -1,6 +1,5 @@
-import pytest
 from datetime import date, timedelta
-from lib.plaid_client import fetch_new_transactions, get_plaid_client
+from lib.plaid_client import fetch_new_transactions
 
 # Helper to mock sync response
 def mock_sync_response(mocker, client_mock, added=[], modified=[], removed=[], has_more=False, next_cursor="next"):

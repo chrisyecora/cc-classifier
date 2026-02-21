@@ -1,5 +1,4 @@
 
-import pytest
 from lib import discord_client
 
 def test_build_post_classification_components():

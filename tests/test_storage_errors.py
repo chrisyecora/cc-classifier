@@ -1,4 +1,3 @@
-import pytest
 import boto3
 from lib.storage import (
     append_transactions,

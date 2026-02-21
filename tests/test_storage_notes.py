@@ -1,4 +1,3 @@
-import pytest
 from lib.storage import update_transaction_note, reset_transaction, read_transactions, write_transactions
 
 def test_update_transaction_note(dynamodb_mock, env_setup):

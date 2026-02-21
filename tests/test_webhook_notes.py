@@ -1,7 +1,6 @@
 
 import pytest
 import json
-from unittest.mock import MagicMock
 from lambdas import webhook
 
 @pytest.fixture

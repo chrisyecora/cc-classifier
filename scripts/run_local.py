@@ -81,7 +81,7 @@ def main():
             
         custom_id = sys.argv[2]
         
-        print(f"--- Running Webhook (Local Discord Interaction) ---")
+        print("--- Running Webhook (Local Discord Interaction) ---")
         print(f"Custom ID: {custom_id}")
         
         import json

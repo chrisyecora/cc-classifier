@@ -1,5 +1,4 @@
 import json
-import pytest
 from lambdas.webhook import handler, handle_modal_submit
 
 # --- Existing Tests (Buttons/Menus) ---
