@@ -58,3 +58,6 @@ jobs:
           UserBName=${{ vars.USER_B_NAME }}
           DiscordUserA=${{ vars.DISCORD_USER_A }}
           DiscordUserB=${{ vars.DISCORD_USER_B }}
+
+      - name: Update Discord Interactions Endpoint URL
+        run: python scripts/update_discord_endpoint.py --stack-name credit-card-tracker-prod
