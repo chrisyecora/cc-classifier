@@ -21,6 +21,7 @@ This document outlines the transition of the Credit Card Tracker from a "hobbyis
 - [ ] **Structured Logging:** Implement JSON logging for easier querying in CloudWatch.
 - [ ] **CloudWatch Alarms:** Set up alerts for Lambda failures or Plaid connection errors.
 - [ ] **Dead Letter Queues (DLQ):** Handle failed notification attempts or webhook processing errors gracefully.
+- [ ] **Blue/Green Deployments:** Use AWS CodeDeploy with SAM to automate traffic shifting and rollbacks based on CloudWatch Alarms (Safe compute rollouts).
 
 ## Phase 4: Data Visualization (The Dashboard)
 **Goal:** Move beyond the Discord UI for deep historical insights.
