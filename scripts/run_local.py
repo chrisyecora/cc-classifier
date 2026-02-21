@@ -252,6 +252,30 @@ def main():
         except Exception as e:
             print(f"Error dumping table: {e}")
 
+    elif command == "delete":
+        if len(sys.argv) < 3:
+            print("Usage: python scripts/run_local.py delete <transaction_id>")
+            return
+            
+        txn_id = sys.argv[2]
+        from lib.storage import delete_transaction, get_transaction
+        
+        txn = get_transaction(txn_id)
+        if txn:
+            print(f"Found transaction: {txn}")
+        else:
+            print(f"Warning: Transaction {txn_id} not found.")
+
+        confirm = input(f"Are you sure you want to delete transaction {txn_id}? (y/n): ")
+        if confirm.lower() != 'y':
+            print("Aborted.")
+            return
+
+        if delete_transaction(txn_id):
+            print(f"Successfully deleted transaction {txn_id}.")
+        else:
+            print(f"Failed to delete transaction {txn_id}.")
+
     else:
         print(f"Unknown command: {command}")
 

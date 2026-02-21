@@ -147,6 +147,20 @@ def reset_transaction(transaction_id: str) -> bool:
         print(f"Error resetting transaction {transaction_id}: {e}")
         return False
 
+def delete_transaction(transaction_id: str) -> bool:
+    """
+    Deletes a transaction by ID.
+    """
+    table = get_table()
+    try:
+        table.delete_item(
+            Key={'pk': PK_TRX, 'sk': transaction_id}
+        )
+        return True
+    except Exception as e:
+        print(f"Error deleting transaction {transaction_id}: {e}")
+        return False
+
 def get_unclassified_transactions() -> list[dict]:
     # This is expensive (Scan). 
     # Optimization: Query by DateIndex for last X months?
