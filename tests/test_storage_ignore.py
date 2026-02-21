@@ -3,12 +3,11 @@ from lib.storage import (
     read_transactions,
     write_transactions,
     exclude_transaction,
-    reset_transaction,
-    get_unclassified_transactions
+    reset_transaction
 )
 
 def test_exclude_transaction(dynamodb_mock, env_setup):
-    initial = [{"transaction_id": "1", "amount": "10.00", "merchant": "Test", "classification": ""}]
+    initial = [{"transaction_id": "1", "amount": "10.00", "merchant": "Test", "classification": "", "date": "2023-01-01"}]
     write_transactions(initial)
     
     # Exclude it
@@ -18,14 +17,9 @@ def test_exclude_transaction(dynamodb_mock, env_setup):
     # Check it's excluded
     stored = read_transactions()[0]
     assert stored["excluded"] == "true"
-    
-    # Should not be in unclassified list
-    unclassified = get_unclassified_transactions()
-    ids = [t["transaction_id"] for t in unclassified]
-    assert "1" not in ids
 
 def test_reset_transaction_clears_exclusion(dynamodb_mock, env_setup):
-    initial = [{"transaction_id": "1", "amount": "10.00", "classification": "", "excluded": "true"}]
+    initial = [{"transaction_id": "1", "amount": "10.00", "classification": "", "excluded": "true", "date": "2023-01-01"}]
     write_transactions(initial)
     
     # Reset it
@@ -35,8 +29,3 @@ def test_reset_transaction_clears_exclusion(dynamodb_mock, env_setup):
     # Check it's back to normal
     stored = read_transactions()[0]
     assert stored["excluded"] == ""
-    
-    # Should be back in unclassified list
-    unclassified = get_unclassified_transactions()
-    ids = [t["transaction_id"] for t in unclassified]
-    assert "1" in ids

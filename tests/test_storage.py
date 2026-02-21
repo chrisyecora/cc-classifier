@@ -6,8 +6,7 @@ from lib.storage import (
     append_transactions,
     update_transaction,
     get_statement_period,
-    get_transactions_for_statement_period,
-    get_unclassified_transactions
+    get_transactions_for_statement_period
 )
 
 def test_read_write_transactions(dynamodb_mock, env_setup):

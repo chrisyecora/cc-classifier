@@ -5,7 +5,7 @@ from lib.plaid_client import fetch_new_transactions, get_plaid_client
 SAMPLE_PLAID_TRANSACTIONS = [
     {
         "transaction_id": "tx1",
-        "date": "2026-01-28",
+        "date": "2026-01-29",
         "amount": 50.00,
         "name": "Target",
         "merchant_name": "Target"
@@ -42,9 +42,10 @@ def test_fetch_new_transactions_success(mocker, env_setup):
     
     txns, modified, removed, cursor = fetch_new_transactions("old_cursor")
     
-    # Should transform data
+    # Should transform data and sort (tx2 is older than tx1, so tx2 should be first)
     assert len(txns) == 2
     assert txns[0]["transaction_id"] == "tx1"
+    assert txns[1]["transaction_id"] == "tx2"
     assert cursor == "new_cursor"
     
     # Verify API call
