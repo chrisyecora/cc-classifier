@@ -59,7 +59,6 @@ Resources:
   TransactionsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub credit-card-tracker-${Environment}-${AWS::AccountId}
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: pk
@@ -86,16 +85,12 @@ Resources:
   DailyScanFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub credit-card-tracker-daily-scan-${Environment}
       Handler: lambdas/daily_scan.handler
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TransactionsTable
-        - Statement:
-            - Effect: Allow
-              Action:
-                - secretsmanager:GetSecretValue
-              Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:cc-classifier/${Environment}/secrets-*
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:cc-classifier/${Environment}/secrets-*
       Events:
         DailySchedule:
           Type: Schedule
@@ -113,16 +108,12 @@ Resources:
   WebhookFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub credit-card-tracker-webhook-${Environment}
       Handler: lambdas/webhook.handler
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TransactionsTable
-        - Statement:
-            - Effect: Allow
-              Action:
-                - secretsmanager:GetSecretValue
-              Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:cc-classifier/${Environment}/secrets-*
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:cc-classifier/${Environment}/secrets-*
       Events:
         DiscordWebhook:
           Type: Api
