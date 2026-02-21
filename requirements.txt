@@ -6,3 +6,4 @@ python-dotenv>=1.0.0
 requests>=2.31.0
 pynacl>=1.5.0
 moto>=5.0.0
+pre-commit>=3.5.0
