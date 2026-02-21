@@ -40,7 +40,7 @@ def test_fetch_new_transactions_success(mocker, env_setup):
     
     mock_client.transactions_sync.return_value = mock_response
     
-    txns, cursor = fetch_new_transactions("old_cursor")
+    txns, modified, removed, cursor = fetch_new_transactions("old_cursor")
     
     # Should transform data
     assert len(txns) == 2

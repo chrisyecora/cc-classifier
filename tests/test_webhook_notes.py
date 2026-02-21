@@ -29,9 +29,9 @@ def test_handle_note_button_click(mocker):
     }
     
     # Mock finding transaction to get existing note
-    mocker.patch("lambdas.webhook.read_transactions", return_value=[
-        {"transaction_id": "txn_123", "note": "Existing"}
-    ])
+    mocker.patch("lambdas.webhook.get_transaction", return_value={
+        "transaction_id": "txn_123", "note": "Existing"
+    })
     
     response = webhook.handle_button_click(interaction)
     
@@ -60,17 +60,15 @@ def test_handle_note_modal_submit(mock_update_note, mocker):
     }
     
     # Mock transaction read (returning the state AFTER update)
-    mocker.patch("lambdas.webhook.read_transactions", return_value=[
-        {
-            "transaction_id": "txn_123", 
-            "classification": "S", 
-            "classified_by": "UserA", 
-            "amount": "100", 
-            "merchant": "Test", 
-            "date": "2023-01-01",
-            "note": "New Note Content" # Simulating the update
-        }
-    ])
+    mocker.patch("lambdas.webhook.get_transaction", return_value={
+        "transaction_id": "txn_123", 
+        "classification": "S", 
+        "classified_by": "UserA", 
+        "amount": "100", 
+        "merchant": "Test", 
+        "date": "2023-01-01",
+        "note": "New Note Content" # Simulating the update
+    })
     
     # Mock user config
     mocker.patch("lambdas.webhook.read_users", return_value={

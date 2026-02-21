@@ -22,10 +22,9 @@ def test_webhook_button_click_success(mocker):
     mock_update = mocker.patch("lambdas.webhook.update_transaction", return_value=True)
     mocker.patch("lambdas.webhook.read_users", return_value={"user_a": {"name": "A"}, "user_b": {"name": "B"}})
     
-    # Mock read_transactions for the reload in _process_update
-    mocker.patch("lambdas.webhook.read_transactions", return_value=[
-        {"transaction_id": "tx1", "classification": "S", "classified_by": "Chris", "amount": "100", "merchant": "Test", "date": "2023-01-01"}
-    ])
+    # Mock get_transaction for the reload in _process_update
+    txn_data = {"transaction_id": "tx1", "classification": "S", "classified_by": "Chris", "amount": "100", "merchant": "Test", "date": "2023-01-01"}
+    mocker.patch("lambdas.webhook.get_transaction", return_value=txn_data)
     
     event = {
         "headers": {"x-signature-ed25519": "sig", "x-signature-timestamp": "ts"},
@@ -50,10 +49,9 @@ def test_webhook_button_click_already_classified(mocker):
     mocker.patch("lambdas.webhook.update_transaction", return_value=False)
     mocker.patch("lambdas.webhook.read_users", return_value={"user_a": {"name": "A"}, "user_b": {"name": "B"}})
     
-    # Mock read_transactions
-    mocker.patch("lambdas.webhook.read_transactions", return_value=[
-        {"transaction_id": "tx1", "classification": "S", "classified_by": "Chris", "amount": "100", "merchant": "Test", "date": "2023-01-01"}
-    ])
+    # Mock get_transaction
+    txn_data = {"transaction_id": "tx1", "classification": "S", "classified_by": "Chris", "amount": "100", "merchant": "Test", "date": "2023-01-01"}
+    mocker.patch("lambdas.webhook.get_transaction", return_value=txn_data)
     
     event = {
         "headers": {"x-signature-ed25519": "sig", "x-signature-timestamp": "ts"},
@@ -65,16 +63,18 @@ def test_webhook_button_click_already_classified(mocker):
     }
     response = handler(event, None)
     assert response["statusCode"] == 200
-    assert "Already classified" in json.loads(response["body"])["data"]["content"]
+    # Even if already classified, we now return the update response (type 7) to refresh the UI
+    body = json.loads(response["body"])
+    assert body["type"] == 7
+    assert "embeds" in body["data"]
 
 def test_webhook_select_menu_success(mocker):
     mocker.patch("lambdas.webhook.verify_discord_signature", return_value=True)
     mock_update = mocker.patch("lambdas.webhook.update_transaction", return_value=True)
     mocker.patch("lambdas.webhook.read_users", return_value={"user_a": {"name": "A"}, "user_b": {"name": "B"}})
     
-    mocker.patch("lambdas.webhook.read_transactions", return_value=[
-        {"transaction_id": "tx1", "classification": "S", "classified_by": "Chris", "amount": "100", "merchant": "Test", "date": "2023-01-01", "percentage": "70"}
-    ])
+    txn_data = {"transaction_id": "tx1", "classification": "S", "classified_by": "Chris", "amount": "100", "merchant": "Test", "date": "2023-01-01", "percentage": "70"}
+    mocker.patch("lambdas.webhook.get_transaction", return_value=txn_data)
     
     event = {
         "headers": {"x-signature-ed25519": "sig", "x-signature-timestamp": "ts"},
@@ -92,14 +92,13 @@ def test_webhook_select_menu_success(mocker):
 
 def test_modal_custom_amount_expense(mocker):
     """Test valid positive expense logic ($20 of $50)."""
-    # Mock reading transaction to get total amount
-    # Must provide all fields needed by _build_update_response
-    mocker.patch("lambdas.webhook.read_transactions", return_value=[
-        {
-            "transaction_id": "tx1", "amount": "50.00", 
-            "classification": "S", "classified_by": "Chris", "merchant": "Test", "date": "2023-01-01"
-        }
-    ])
+    # Mock get_transaction
+    txn_data = {
+        "transaction_id": "tx1", "amount": "50.00", 
+        "classification": "S", "classified_by": "Chris", "merchant": "Test", "date": "2023-01-01"
+    }
+    mocker.patch("lambdas.webhook.get_transaction", return_value=txn_data)
+    
     mock_update = mocker.patch("lambdas.webhook.update_transaction", return_value=True)
     mocker.patch("lambdas.webhook.read_users", return_value={"user_a": {"name": "A"}, "user_b": {"name": "B"}})
     
@@ -122,12 +121,12 @@ def test_modal_custom_amount_expense(mocker):
 
 def test_modal_custom_amount_credit(mocker):
     """Test valid negative credit logic (-$20 of -$50)."""
-    mocker.patch("lambdas.webhook.read_transactions", return_value=[
-        {
-            "transaction_id": "tx1", "amount": "-50.00",
-            "classification": "S", "classified_by": "Chris", "merchant": "Test", "date": "2023-01-01"
-        }
-    ])
+    txn_data = {
+        "transaction_id": "tx1", "amount": "-50.00",
+        "classification": "S", "classified_by": "Chris", "merchant": "Test", "date": "2023-01-01"
+    }
+    mocker.patch("lambdas.webhook.get_transaction", return_value=txn_data)
+    
     mock_update = mocker.patch("lambdas.webhook.update_transaction", return_value=True)
     mocker.patch("lambdas.webhook.read_users", return_value={"user_a": {"name": "A"}, "user_b": {"name": "B"}})
     
@@ -150,9 +149,7 @@ def test_modal_custom_amount_credit(mocker):
 
 def test_modal_custom_amount_invalid_expense(mocker):
     """Test invalid input > total ($60 of $50)."""
-    mocker.patch("lambdas.webhook.read_transactions", return_value=[
-        {"transaction_id": "tx1", "amount": "50.00"}
-    ])
+    mocker.patch("lambdas.webhook.get_transaction", return_value={"transaction_id": "tx1", "amount": "50.00"})
     
     interaction = {
         "type": 5, 
@@ -172,9 +169,7 @@ def test_modal_custom_amount_invalid_expense(mocker):
 
 def test_modal_custom_amount_invalid_credit_mixed_sign(mocker):
     """Test invalid input (positive input $20 for credit -$50)."""
-    mocker.patch("lambdas.webhook.read_transactions", return_value=[
-        {"transaction_id": "tx1", "amount": "-50.00"}
-    ])
+    mocker.patch("lambdas.webhook.get_transaction", return_value={"transaction_id": "tx1", "amount": "-50.00"})
     
     interaction = {
         "type": 5, 
@@ -192,9 +187,7 @@ def test_modal_custom_amount_invalid_credit_mixed_sign(mocker):
 
 def test_modal_custom_amount_invalid_credit_too_large(mocker):
     """Test invalid input (-$60 for credit -$50)."""
-    mocker.patch("lambdas.webhook.read_transactions", return_value=[
-        {"transaction_id": "tx1", "amount": "-50.00"}
-    ])
+    mocker.patch("lambdas.webhook.get_transaction", return_value={"transaction_id": "tx1", "amount": "-50.00"})
     
     interaction = {
         "type": 5, 

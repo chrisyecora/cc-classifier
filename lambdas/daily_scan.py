@@ -3,7 +3,10 @@ from lib.plaid_client import fetch_new_transactions
 from lib.storage import (
     append_transactions, 
     get_cursor,
-    save_cursor
+    save_cursor,
+    get_transaction,
+    delete_transaction,
+    update_transaction_details
 )
 from lib.discord_client import send_transaction_notification, send_settlement_notification, send_error_notification
 from lib.settlement import calculate_settlement, format_settlement_message
@@ -33,29 +36,75 @@ def _handle_daily_scan():
     # Cursor-based sync
     cursor = get_cursor()
     
-    # fetch_new_transactions handles the logic of "if cursor is None, fetch all but keep recent"
-    transactions, new_cursor = fetch_new_transactions(cursor)
+    # fetch_new_transactions handles logic and returns 3 lists + cursor
+    added, modified, removed, new_cursor = fetch_new_transactions(cursor)
     
-    if not transactions:
-        print("No new transactions fetched.")
-        # Even if no transactions, we must save the new cursor to advance state!
-        # (Unless API failed, but here we assume success)
+    if not added and not modified and not removed:
+        print("No new/modified/removed transactions.")
         if new_cursor and new_cursor != cursor:
             save_cursor(new_cursor)
             print(f"Updated cursor: {new_cursor}")
         return
-        
-    added = append_transactions(transactions)
-    print(f"Added {added} new transactions.")
+
+    # 1. Process Added Transactions
+    transactions_to_save = []
+    transactions_to_notify = []
     
-    # Save cursor after successful append
+    for txn in added:
+        pending_id = txn.get("pending_transaction_id")
+        inherited = False
+        
+        if pending_id:
+            # Check if we have the pending transaction in DB
+            pending_txn = get_transaction(pending_id)
+            if pending_txn:
+                print(f"Found pending transaction {pending_id} for new transaction {txn['transaction_id']}")
+                # Inherit classification data
+                txn['classification'] = pending_txn.get('classification', '')
+                txn['classified_by'] = pending_txn.get('classified_by', '')
+                txn['percentage'] = pending_txn.get('percentage', '')
+                txn['note'] = pending_txn.get('note', '')
+                txn['excluded'] = pending_txn.get('excluded', '')
+                
+                # If it was already classified or excluded, we consider it handled.
+                if txn['classification'] or txn['excluded'] == 'true':
+                    inherited = True
+        
+        transactions_to_save.append(txn)
+        if not inherited:
+            transactions_to_notify.append(txn)
+            
+    if transactions_to_save:
+        count = append_transactions(transactions_to_save)
+        print(f"Added {count} new transactions (saved {len(transactions_to_save)} total).")
+        
+    # 2. Process Modified Transactions
+    for txn in modified:
+        # We only update details, preserving classification
+        update_transaction_details(
+            txn['transaction_id'],
+            txn['amount'],
+            txn['date'],
+            txn['merchant'],
+            txn.get('name') or ''
+        )
+    if modified:
+        print(f"Processed {len(modified)} modified transactions.")
+        
+    # 3. Process Removed Transactions
+    for txn in removed:
+        delete_transaction(txn['transaction_id'])
+    if removed:
+        print(f"Processed {len(removed)} removed transactions.")
+
+    # Save cursor after processing
     if new_cursor:
         save_cursor(new_cursor)
         print(f"Saved new cursor: {new_cursor}")
     
-    # Notify ONLY for newly fetched transactions (Fire-and-Forget)
-    if transactions:
-        send_transaction_notification(transactions)
+    # Notify ONLY for truly new/unclassified transactions
+    if transactions_to_notify:
+        send_transaction_notification(transactions_to_notify)
     else:
         print("No new transactions to notify.")
 

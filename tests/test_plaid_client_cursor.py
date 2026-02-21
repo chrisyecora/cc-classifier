@@ -35,7 +35,7 @@ def test_fetch_new_transactions_with_cursor(mocker, env_setup):
     mock_sync_response(mocker, mock_client, added=txns_data, next_cursor="new_cursor")
     
     # Call with existing cursor
-    transactions, new_cursor = fetch_new_transactions("old_cursor")
+    transactions, modified, removed, new_cursor = fetch_new_transactions("old_cursor")
     
     assert len(transactions) == 1
     assert transactions[0]["transaction_id"] == "t1"
@@ -61,7 +61,7 @@ def test_fetch_new_transactions_initial_sync_filtering(mocker, env_setup):
     mock_sync_response(mocker, mock_client, added=txns_data, next_cursor="init_cursor")
     
     # Call with None cursor (Initial Sync)
-    transactions, new_cursor = fetch_new_transactions(None)
+    transactions, modified, removed, new_cursor = fetch_new_transactions(None)
     
     assert len(transactions) == 1
     assert transactions[0]["transaction_id"] == "t_new" # Only recent kept
@@ -85,7 +85,7 @@ def test_pagination(mocker, env_setup):
     
     mock_client.transactions_sync.side_effect = [page1, page2]
     
-    transactions, new_cursor = fetch_new_transactions("start")
+    transactions, modified, removed, new_cursor = fetch_new_transactions("start")
     
     assert len(transactions) == 2
     assert transactions[0]["transaction_id"] == "p1"

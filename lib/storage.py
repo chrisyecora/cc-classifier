@@ -161,6 +161,33 @@ def delete_transaction(transaction_id: str) -> bool:
         print(f"Error deleting transaction {transaction_id}: {e}")
         return False
 
+def update_transaction_details(transaction_id: str, amount: str, date_val: str, merchant: str, name: str) -> bool:
+    """
+    Updates transaction details from Plaid (amount, date, merchant, name)
+    without modifying classification status.
+    """
+    table = get_table()
+    try:
+        table.update_item(
+            Key={'pk': PK_TRX, 'sk': transaction_id},
+            UpdateExpression="set amount=:a, #d=:d, merchant=:m, #n=:n",
+            ExpressionAttributeNames={
+                '#d': 'date',
+                '#n': 'name'
+            },
+            ExpressionAttributeValues={
+                ':a': amount,
+                ':d': date_val,
+                ':m': merchant,
+                ':n': name
+            },
+            ConditionExpression="attribute_exists(pk)"
+        )
+        return True
+    except Exception as e:
+        print(f"Error updating transaction details {transaction_id}: {e}")
+        return False
+
 def get_unclassified_transactions() -> list[dict]:
     # This is expensive (Scan). 
     # Optimization: Query by DateIndex for last X months?
