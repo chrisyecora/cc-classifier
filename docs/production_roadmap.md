@@ -4,17 +4,17 @@ This document outlines the transition of the Credit Card Tracker from a "hobbyis
 
 ## Phase 1: Foundation & CI/CD (Current Focus)
 **Goal:** Automate deployments and ensure code quality before it reaches AWS.
-- [ ] **GitHub Actions Integration:** 
+- [x] **GitHub Actions Integration:** 
     - Build and test on Pull Requests.
     - Automatic `sam build` and `sam deploy` on merge to `main`.
-- [ ] **Linting & Formatting:** Integrate `ruff` or `black/flake8` into the pipeline.
-- [ ] **Unit Test Enforcement:** Ensure `pytest` passes before any deployment.
+- [x] **Linting & Formatting:** Integrate `ruff` or `black/flake8` into the pipeline.
+- [x] **Unit Test Enforcement:** Ensure `pytest` passes before any deployment.
 
 ## Phase 2: Multi-Environment & Security
 **Goal:** Separate "experimentation" from "production" data and secure credentials.
-- [ ] **Bifurcated Stacks:** Use SAM parameters to maintain separate `dev` and `prod` stacks (different DynamoDB tables, different Discord channels).
-- [ ] **Secret Management:** Move from `.env` files to **AWS Systems Manager (SSM) Parameter Store** or **Secrets Manager**.
-- [ ] **IAM Least Privilege:** Audit Lambda execution roles to ensure they only have access to specific resources.
+- [x] **Bifurcated Stacks:** Use SAM parameters to maintain separate `dev` and `prod` stacks (different DynamoDB tables, different Discord channels).
+- [x] **Secret Management:** Move from `.env` files to **AWS Systems Manager (SSM) Parameter Store** or **Secrets Manager**.
+- [x] **IAM Least Privilege:** Audit Lambda execution roles to ensure they only have access to specific resources.
 
 ## Phase 3: Observability & Reliability
 **Goal:** Know when things break before the users (you and your partner) do.
