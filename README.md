@@ -1,117 +1,59 @@
 # Credit Card Tracker (cc-classifier)
 
-A serverless Discord bot that automates credit card expense tracking and splitting for two users. It fetches transactions via Plaid, allows interactive classification in Discord, and calculates monthly settlements.
+A serverless Python application that automates credit card expense tracking and splitting for two users sharing a single account. Built entirely on AWS, this project integrates with the Plaid API to fetch daily transactions and leverages Discord's interactive UI components (Buttons, Dropdowns, Modals) for real-time expense classification.
 
-## 🚀 Features
+## 🚀 Overview
 
-*   **Automated Tracking**: Daily scan (9 AM UTC) fetches new transactions from Plaid.
-*   **Discord Integration**:
-    *   **Interactive UI**: Classify transactions using Buttons and Dropdown Menus.
-    *   **Splitting Options**:
-        *   **Individual**: Assign 100% to User A or User B.
-        *   **Shared**: Split 50/50 or custom percentages (e.g., "You pay 30%").
-        *   **Custom Amount**: Enter a specific dollar amount for the split.
-    *   **Context**: Add **Notes** to any transaction via a modal.
-    *   **Management**: **Ignore** transactions (exclude from totals) or **Undo** a classification.
-*   **Monthly Settlements**: Automatically calculates who owes what on the 1st of every month (covering the previous billing cycle).
-*   **Serverless Architecture**: Built on AWS Lambda & DynamoDB for low cost and high availability.
+The goal of this project was to eliminate the manual overhead of tracking shared expenses using spreadsheets. By bringing the classification process directly into a Discord channel, it allows users to assign or split transactions with a single click as soon as they clear the bank.
 
-## 🏗️ Architecture
+At the end of each billing cycle, the system automatically calculates the final settlement and generates a summary report, detailing exactly who owes what.
 
-The project is built using **AWS SAM (Serverless Application Model)** and Python 3.11.
+## 🛠️ Tech Stack & Architecture
 
-*   **AWS Lambda**:
-    *   `DailyScanFunction`: Triggered by EventBridge (Cron). Fetches data from Plaid, updates DynamoDB, and sends Discord notifications.
-    *   `WebhookFunction`: Handles Discord interactions (API Gateway HTTP POST). Verifies signatures and updates transaction state.
-*   **Amazon DynamoDB**: Stores all transaction data with atomic updates. Replaced the legacy CSV/S3 storage.
-*   **Amazon EventBridge**: Schedules the daily scan and monthly settlement reports.
-*   **API Gateway**: Exposes the public endpoint for Discord Webhooks.
+This project is built using a modern, event-driven serverless architecture on AWS.
 
-### Project Structure
+- **Language:** Python 3.11
+- **Infrastructure as Code:** AWS SAM (Serverless Application Model)
+- **Compute:** AWS Lambda (Event-driven processing and webhook handling)
+- **Database:** Amazon DynamoDB (NoSQL storage with atomic updates for high concurrency)
+- **API Gateway:** HTTP API for receiving and validating Discord Webhooks via Ed25519 signatures
+- **Scheduling:** Amazon EventBridge (Cron jobs for daily syncing and monthly settlements)
+- **External APIs:**
+  - **Plaid API:** Securely authenticates and fetches bank transaction data.
+  - **Discord API:** Sends rich embeds and handles interactive message components.
 
-```
-.
-├── lambdas/           # Lambda function handlers
-│   ├── daily_scan.py  # Cron job for fetching data & reporting
-│   └── webhook.py     # Discord interaction handler
-├── lib/               # Core business logic
-│   ├── discord_client.py
-│   ├── plaid_client.py
-│   ├── settlement.py
-│   └── storage.py     # DynamoDB operations
-├── tests/             # Pytest suite
-├── template.yaml      # AWS SAM Infrastructure-as-Code
-└── requirements.txt   # Python dependencies
-```
+## ✨ Key Features
 
-## 🛠️ Setup & Deployment
+- **Automated Daily Sync:** A scheduled EventBridge rule triggers a Lambda function daily to fetch the latest cleared transactions via Plaid and persist them to DynamoDB.
+- **Interactive Discord UI:** New transactions are pushed to a private Discord channel as rich embedded messages. Users can classify expenses directly within Discord using:
+  - **Buttons:** Quickly assign 100% of the cost to User A or User B, or split it 50/50.
+  - **Dropdown Menus:** Select custom percentage splits (e.g., 70/30) or input a specific dollar amount.
+  - **Modals:** Add contextual text notes to a transaction for future reference.
+    ![screenshot of the Discord UI](./images/discord_classification_msg.png)
+- **Webhook State Management:** When a user interacts with a message, Discord sends a payload to the API Gateway. A dedicated Webhook Lambda verifies the request signature, atomically updates the transaction state in DynamoDB, and dynamically updates the message color (e.g., green for classified, grey for ignored) to prevent double-processing.
+- **Automated Settlements:** On the 1st of every month, an automated job queries DynamoDB using a Date Index to retrieve all transactions from the previous billing cycle. It calculates the final balances and posts a settlement summary to a dedicated Discord channel.
+  ![screenshot of the Discord UI](./images/discord_settlement_msg.png)
+- **Transaction Management:** Users can mark specific transactions (like credit card payments) as "Ignored" to exclude them from the monthly calculation, or easily undo a classification if a mistake was made.
 
-### Prerequisites
+## 🔒 Enterprise-Ready Engineering
 
-*   **AWS CLI** & **AWS SAM CLI** installed and configured.
-*   **Python 3.11+**
-*   **Discord Bot Application**: Created in the [Discord Developer Portal](https://discord.com/developers/applications).
-*   **Plaid Account**: Client ID and Secret from the [Plaid Dashboard](https://dashboard.plaid.com/).
+While this began as a personal automation project, it has been rigorously engineered to production standards, demonstrating a mature Software Development Lifecycle (SDLC):
 
-### Environment Variables
+- **CI/CD Pipelines:** GitHub Actions automatically enforce code quality (linting and formatting), run the comprehensive `pytest` suite, and manage seamless deployments (`sam build` & `sam deploy`) to AWS upon merging to the `main` branch.
+- **Secret Management:** Sensitive credentials (like Plaid and Discord API tokens) are securely stored and fetched dynamically using **AWS Secrets Manager**, avoiding static environment variables or `.env` files in production.
+- **Environment Isolation:** AWS SAM parameters are leveraged to maintain strictly bifurcated `dev` and `prod` stacks, ensuring safe testing against isolated DynamoDB tables without impacting live settlement data.
+- **Security & IAM:** Adheres to the principle of least privilege. Lambda execution roles are tightly scoped, granting access only to the specific DynamoDB tables and Secrets Manager resources required.
+- **Observability:** Positioned for high reliability with planned integration of structured JSON logging for Amazon CloudWatch and automated alarms to proactively monitor function health and third-party API integrations.
 
-You will need the following credentials:
+## 📁 Project Structure
 
-*   `DISCORD_BOT_TOKEN`, `DISCORD_PUBLIC_KEY`
-*   `PLAID_CLIENT_ID`, `PLAID_SECRET`
-*   `PLAID_ENV` (sandbox, development, or production)
-*   `USER_A_NAME`, `USER_B_NAME` (Display names)
+- `lambdas/`: AWS Lambda function handlers for cron jobs (`daily_scan.py`) and API webhook events (`webhook.py`).
+- `lib/`: Core business logic including API clients (`plaid_client.py`, `discord_client.py`), database interactions (`storage.py`), and mathematical settlement logic (`settlement.py`).
+- `tests/`: Comprehensive `pytest` suite with over 90% code covereage utilizing `pytest-mock` and `moto` to simulate AWS services locally without requiring live credentials.
+- `template.yaml`: The AWS SAM template defining the infrastructure resources, IAM policies, and environment variables.
 
-### Local Development
+## 🎯 Purpose
 
-1.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/yourusername/cc-classifier.git
-    cd cc-classifier
-    ```
+This project is a personal automation for my partner and I to more easily track the expenses that we put on a shared credit card. Before, settling up was a messy monthly process inside of a spreadsheet with clunky formulas.
 
-2.  **Install dependencies**:
-    ```bash
-    python3 -m venv .venv
-    source .venv/bin/activate
-    pip install -r requirements.txt
-    ```
-
-3.  **Run Tests**:
-    The project uses `pytest` with `moto` to mock AWS services locally.
-    ```bash
-    pytest
-    ```
-
-### Deployment
-
-1.  **Build the application**:
-    ```bash
-    sam build
-    ```
-
-2.  **Deploy to AWS**:
-    ```bash
-    sam deploy --guided
-    ```
-    Follow the prompts to input your Discord and Plaid credentials.
-
-3.  **Configure Discord**:
-    *   Copy the `InteractionsEndpointUrl` output from the deployment.
-    *   Paste it into the **Interactions Endpoint URL** field in your Discord App settings.
-
-## 🎮 Usage
-
-1.  **New Transactions**: appear in the configured `DiscordClassificationsChannel`.
-2.  **Classify**:
-    *   Click **User A** or **User B** to assign the full amount.
-    *   Click **Shared** to split 50/50.
-    *   Use the **Dropdown Menu** for custom percentage splits.
-    *   Click **Ignore** to exclude a transaction (e.g., payments).
-    *   Click **Note** to add a text note.
-3.  **Settlement**:
-    *   On the 1st of the month, a summary report is posted to the `DiscordSettlementsChannel`.
-
-## 📄 License
-
-[MIT](LICENSE)
+Now, we have an automated system to notify us of new transactions as they come which also settles up each statement for us, significantly reducing our manual workload!
