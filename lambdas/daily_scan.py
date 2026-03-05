@@ -15,7 +15,6 @@ from lib.settlement import calculate_settlement, format_settlement_message
 def handler(event, _context):
     """
     Handles scheduled events from EventBridge.
-    Route based on resources ARN or specific detail-type if available.
     """
     resources = event.get("resources", [])
 
