@@ -1,12 +1,10 @@
 # Statement review app
 
-The production monthly job continues its existing automatic settlement until the final review-workflow cutover PR is merged. PR previews have schedules disabled.
-
 The admin app is a Vite/React/TypeScript build in `web/`. Its static files are served by CloudFront from a private S3 bucket. CloudFront forwards `/api/*` to the authenticated API Gateway REST API. The page never receives AWS credentials or the Cognito password.
 
 ## Monthly workflow
 
-1. After the workflow cutover, the scheduled job posts a reminder in the settlements Discord channel on the 1st. It does not publish a settlement amount.
+1. The scheduled job posts a reminder in the settlements Discord channel on the 1st. It does not publish a settlement amount.
 2. Open the admin site and sign in through Cognito. Select the statement ending month.
 3. Confirm the inclusive start and end dates against the card statement. A new draft starts the day after the previous confirmed statement; its suggested end is the 9th.
 4. Correct classifications, splits, ignored status, and notes. The totals are calculated by the Python settlement logic and updated after each save.
