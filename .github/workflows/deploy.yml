@@ -55,6 +55,8 @@ jobs:
           --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM
           --parameter-overrides
           Environment=prod
+          EnableSchedules=true
+          SecretsEnvironment=prod
           DiscordClassificationsChannelId=${{ vars.DISCORD_CLASSIFICATIONS_CHANNEL_ID }}
           DiscordSettlementsChannelId=${{ vars.DISCORD_SETTLEMENTS_CHANNEL_ID }}
           PlaidEnv=${{ vars.PLAID_ENV }}
@@ -65,3 +67,16 @@ jobs:
 
       - name: Update Discord Interactions Endpoint URL
         run: python scripts/update_discord_endpoint.py --stack-name credit-card-tracker-prod
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build admin page
+        run: npm ci --prefix web && npm run build --prefix web
+
+      - name: Deploy admin page
+        run: python scripts/deploy_admin_site.py --stack-name credit-card-tracker-prod

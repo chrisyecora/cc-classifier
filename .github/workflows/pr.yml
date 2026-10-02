@@ -1,5 +1,8 @@
 name: PR Check
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     paths-ignore:
@@ -44,3 +47,79 @@ jobs:
 
       - name: Check admin page
         run: npm ci --prefix web && npm run build --prefix web
+
+      - name: Save admin page build
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-page
+          path: web/dist
+          retention-days: 1
+
+  deploy-preview:
+    name: Deploy shared dev preview
+    needs: test-and-lint
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    concurrency:
+      group: cc-classifier-dev-preview
+      cancel-in-progress: false
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Install site deployment dependencies
+        run: pip install boto3
+
+      - name: Set up AWS SAM
+        uses: aws-actions/setup-sam@v2
+
+      - name: Build SAM application
+        run: sam build
+
+      - name: Deploy isolated dev stack
+        run: >
+          sam deploy
+          --no-confirm-changeset
+          --no-fail-on-empty-changeset
+          --stack-name credit-card-tracker-dev
+          --resolve-s3
+          --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM
+          --parameter-overrides
+          Environment=dev
+          EnableSchedules=false
+          SecretsEnvironment=prod
+          DiscordClassificationsChannelId=${{ vars.DISCORD_CLASSIFICATIONS_CHANNEL_ID }}
+          DiscordSettlementsChannelId=${{ vars.DISCORD_SETTLEMENTS_CHANNEL_ID }}
+          PlaidEnv=sandbox
+          UserAName=${{ vars.USER_A_NAME }}
+          UserBName=${{ vars.USER_B_NAME }}
+          DiscordUserA=${{ vars.DISCORD_USER_A }}
+          DiscordUserB=${{ vars.DISCORD_USER_B }}
+
+      - name: Download admin page build
+        uses: actions/download-artifact@v4
+        with:
+          name: admin-page
+          path: web/dist
+
+      - name: Deploy admin page to dev
+        run: python scripts/deploy_admin_site.py --stack-name credit-card-tracker-dev
+
+      - name: Show preview URL
+        run: |
+          SITE_URL=$(aws cloudformation describe-stacks --stack-name credit-card-tracker-dev --query "Stacks[0].Outputs[?OutputKey=='AdminSiteUrl'].OutputValue" --output text)
+          echo "### Statement review preview" >> "$GITHUB_STEP_SUMMARY"
+          echo "[$SITE_URL]($SITE_URL)" >> "$GITHUB_STEP_SUMMARY"
+          echo "This is a shared dev stack; the latest same-repository PR deployment is shown." >> "$GITHUB_STEP_SUMMARY"

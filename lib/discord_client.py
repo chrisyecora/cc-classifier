@@ -36,6 +36,12 @@ def send_message(content: str, channel_id: str, components: list = None, embeds:
 
     headers = {"Authorization": f"Bot {token}", "Content-Type": "application/json"}
 
+    if config.environment == "dev":
+        content = f"**DEV TESTING**\n{content}" if content else "**DEV TESTING**"
+        # A Discord application has one interactions endpoint. Dev buttons would
+        # otherwise be sent to the production webhook and production table.
+        components = None
+
     payload = {"content": content}
     if components:
         payload["components"] = components
