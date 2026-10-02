@@ -116,13 +116,14 @@ def update_transaction(transaction_id: str, classification: str, classified_by: 
     try:
         table.update_item(
             Key={"pk": PK_TRX, "sk": transaction_id},
-            UpdateExpression="set classification=:c, classified_by=:u, percentage=:p",
+            UpdateExpression="SET classification=:c, classified_by=:u, percentage=:p ADD edit_version :one",
             ConditionExpression="(attribute_not_exists(classification) OR classification = :empty) AND attribute_exists(pk)",
             ExpressionAttributeValues={
                 ":c": classification,
                 ":u": classified_by,
                 ":p": str(percentage) if percentage is not None else "",
                 ":empty": "",
+                ":one": 1,
             },
         )
         return True
@@ -135,9 +136,9 @@ def exclude_transaction(transaction_id: str) -> bool:
     try:
         table.update_item(
             Key={"pk": PK_TRX, "sk": transaction_id},
-            UpdateExpression="set excluded=:e",
+            UpdateExpression="SET excluded=:e ADD edit_version :one",
             ConditionExpression="attribute_exists(pk)",
-            ExpressionAttributeValues={":e": "true"},
+            ExpressionAttributeValues={":e": "true", ":one": 1},
         )
         return True
     except Exception as e:
@@ -150,9 +151,9 @@ def update_transaction_note(transaction_id: str, note: str) -> bool:
     try:
         table.update_item(
             Key={"pk": PK_TRX, "sk": transaction_id},
-            UpdateExpression="set note=:n",
+            UpdateExpression="SET note=:n ADD edit_version :one",
             ConditionExpression="attribute_exists(pk)",
-            ExpressionAttributeValues={":n": note},
+            ExpressionAttributeValues={":n": note, ":one": 1},
         )
         return True
     except Exception as e:
@@ -160,14 +161,65 @@ def update_transaction_note(transaction_id: str, note: str) -> bool:
         return False
 
 
+def admin_update_transaction(transaction_id: str, values: dict, expected_version: int) -> dict:
+    """Replace only editable fields, guarding against stale admin changes."""
+    from botocore.exceptions import ClientError
+    from lib.statements import ConflictError
+
+    current = get_transaction(transaction_id)
+    if not current:
+        raise ValueError("Transaction not found")
+    if int(current.get("edit_version", 0)) != expected_version:
+        raise ConflictError("Transaction changed; reload before saving")
+    names = {
+        "classification": "#classification",
+        "classified_by": "#classified_by",
+        "percentage": "#percentage",
+        "excluded": "#excluded",
+        "note": "#note",
+    }
+    set_parts = [f"{alias}=:{field}" for field, alias in names.items()]
+    attrs = {alias: field for field, alias in names.items()}
+    attr_values = {f":{field}": values[field] for field in names}
+    attr_values[":next"] = expected_version + 1
+    set_parts.append("edit_version=:next")
+    # Legacy transactions may not have an edit_version; compare editable fields too.
+    conditions = ["attribute_exists(pk)"]
+    for field, alias in names.items():
+        old = current.get(field)
+        if old is None:
+            conditions.append(f"attribute_not_exists({alias})")
+        else:
+            attr_values[f":old_{field}"] = old
+            conditions.append(f"{alias}=:old_{field}")
+    if "edit_version" in current:
+        attr_values[":old_version"] = expected_version
+        conditions.append("edit_version=:old_version")
+    else:
+        conditions.append("attribute_not_exists(edit_version)")
+    try:
+        get_table().update_item(
+            Key={"pk": PK_TRX, "sk": transaction_id},
+            UpdateExpression="SET " + ", ".join(set_parts),
+            ConditionExpression=" AND ".join(conditions),
+            ExpressionAttributeNames=attrs,
+            ExpressionAttributeValues=attr_values,
+        )
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            raise ConflictError("Transaction changed; reload before saving") from exc
+        raise
+    return get_transaction(transaction_id)
+
+
 def reset_transaction(transaction_id: str) -> bool:
     table = get_table()
     try:
         table.update_item(
             Key={"pk": PK_TRX, "sk": transaction_id},
-            UpdateExpression="set classification=:e, classified_by=:e, percentage=:e, note=:e, excluded=:e",
+            UpdateExpression="SET classification=:e, classified_by=:e, percentage=:e, note=:e, excluded=:e ADD edit_version :one",
             ConditionExpression="attribute_exists(pk)",
-            ExpressionAttributeValues={":e": ""},
+            ExpressionAttributeValues={":e": "", ":one": 1},
         )
         return True
     except Exception as e:
@@ -219,15 +271,25 @@ def get_statement_period(settlement_date: date) -> tuple[date, date]:
 
 def get_transactions_for_statement_period(settlement_date: date) -> list[dict]:
     start_date, end_date = get_statement_period(settlement_date)
+    return get_transactions_between(start_date, end_date)
+
+
+def get_transactions_between(start_date: date, end_date: date) -> list[dict]:
     start_str = start_date.isoformat()
     end_str = end_date.isoformat()
 
     table = get_table()
-    response = table.query(
-        IndexName="DateIndex", KeyConditionExpression=Key("pk").eq(PK_TRX) & Key("date").between(start_str, end_str)
-    )
-
-    return _map_ddb_items_to_model(response.get("Items", []))
+    items = []
+    # Strongly consistent reads keep the review and publication totals current
+    # immediately after an admin or Discord edit. GSIs are eventually consistent.
+    kwargs = {"KeyConditionExpression": Key("pk").eq(PK_TRX), "ConsistentRead": True}
+    while True:
+        response = table.query(**kwargs)
+        items.extend(item for item in response.get("Items", []) if start_str <= item.get("date", "") <= end_str)
+        if "LastEvaluatedKey" not in response:
+            break
+        kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+    return _map_ddb_items_to_model(items)
 
 
 # --- Helpers ---
