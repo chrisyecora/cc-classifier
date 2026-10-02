@@ -21,9 +21,13 @@ class SettlementResult:
 
 
 def calculate_settlement(settlement_date: date) -> SettlementResult:
-    config = get_config()
     start_date, end_date = get_statement_period(settlement_date)
     transactions = get_transactions_for_statement_period(settlement_date)
+    return calculate_for_transactions(start_date, end_date, transactions)
+
+
+def calculate_for_transactions(start_date: date, end_date: date, transactions: list[dict]) -> SettlementResult:
+    config = get_config()
 
     user_a_total = Decimal("0.00")
     user_b_total = Decimal("0.00")

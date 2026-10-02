@@ -3,6 +3,7 @@ line-length = 120
 extend-exclude = [".venv", ".aws-sam"]
 
 [tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
 # Ignore E701 (multiple statements on one line - colon) 
 # and E402 (module level import not at top of file)
 ignore = ["E701", "E402"]
