@@ -7,6 +7,14 @@ Parameters:
     Type: String
     Default: dev
     AllowedValues: [dev, prod]
+  EnableSchedules:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  SecretsEnvironment:
+    Type: String
+    Default: prod
+    AllowedValues: [dev, prod]
     
   DiscordClassificationsChannelId:
     Type: String
@@ -43,6 +51,7 @@ Globals:
     Environment:
       Variables:
         ENVIRONMENT: !Ref Environment
+        SECRET_ID: !Sub cc-classifier/${SecretsEnvironment}/secrets
         TABLE_NAME: !Ref TransactionsTable
         
         DISCORD_CLASSIFICATIONS_CHANNEL_ID: !Ref DiscordClassificationsChannelId
@@ -55,7 +64,192 @@ Globals:
         DISCORD_USER_A: !Ref DiscordUserA
         DISCORD_USER_B: !Ref DiscordUserB
 
+Conditions:
+  SchedulesEnabled: !Equals [!Ref EnableSchedules, 'true']
+
 Resources:
+  AdminUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub cc-statement-admin-${Environment}
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 16
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+  AdminUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub cc-statement-${AWS::AccountId}-${Environment}
+      UserPoolId: !Ref AdminUserPool
+
+  AdminUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref AdminUserPool
+      GenerateSecret: false
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, email]
+      SupportedIdentityProviders: [COGNITO]
+      CallbackURLs:
+        - !Sub https://${AdminDistribution.DomainName}/
+      LogoutURLs:
+        - !Sub https://${AdminDistribution.DomainName}/
+      PreventUserExistenceErrors: ENABLED
+
+  AdminApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Auth:
+        Authorizers:
+          AdminCognito:
+            UserPoolArn: !GetAtt AdminUserPool.Arn
+
+  AdminFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: lambdas/admin_api.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TransactionsTable
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:cc-classifier/${SecretsEnvironment}/secrets-*
+      Events:
+        ListStatements:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AdminApi
+            Path: /api/statements
+            Method: GET
+            Auth:
+              Authorizer: AdminCognito
+        GetStatement:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AdminApi
+            Path: /api/statements/{month}
+            Method: GET
+            Auth:
+              Authorizer: AdminCognito
+        SaveStatement:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AdminApi
+            Path: /api/statements/{month}
+            Method: PUT
+            Auth:
+              Authorizer: AdminCognito
+        PublishStatement:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AdminApi
+            Path: /api/statements/{month}/publish
+            Method: POST
+            Auth:
+              Authorizer: AdminCognito
+        UpdateTransaction:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AdminApi
+            Path: /api/transactions/{transaction_id}
+            Method: PATCH
+            Auth:
+              Authorizer: AdminCognito
+
+  AdminSiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+
+  AdminOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub cc-statement-${Environment}-oac
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  AdminApiOriginRequestPolicy:
+    Type: AWS::CloudFront::OriginRequestPolicy
+    Properties:
+      OriginRequestPolicyConfig:
+        Name: !Sub cc-statement-${Environment}-api-origin
+        CookiesConfig:
+          CookieBehavior: none
+        HeadersConfig:
+          HeaderBehavior: whitelist
+          Headers: [Authorization, Content-Type]
+        QueryStringsConfig:
+          QueryStringBehavior: all
+
+  AdminDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        Origins:
+          - Id: admin-site
+            DomainName: !GetAtt AdminSiteBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+            OriginAccessControlId: !GetAtt AdminOriginAccessControl.Id
+          - Id: admin-api
+            DomainName: !Sub ${AdminApi}.execute-api.${AWS::Region}.amazonaws.com
+            OriginPath: /Prod
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+        DefaultCacheBehavior:
+          TargetOriginId: admin-site
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: admin-api
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+            CachedMethods: [GET, HEAD]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            OriginRequestPolicyId: !Ref AdminApiOriginRequestPolicy
+
+  AdminSiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AdminSiteBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontRead
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub ${AdminSiteBucket.Arn}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${AdminDistribution}
+
   TransactionsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -90,20 +284,20 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref TransactionsTable
         - AWSSecretsManagerGetSecretValuePolicy:
-            SecretArn: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:cc-classifier/${Environment}/secrets-*
+            SecretArn: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:cc-classifier/${SecretsEnvironment}/secrets-*
       Events:
         DailySchedule:
           Type: Schedule
           Properties:
             Schedule: cron(0 9 * * ? *)
             Description: Daily transaction scan
-            Enabled: true
+            Enabled: !If [SchedulesEnabled, true, false]
         MonthlySettlement:
           Type: Schedule
           Properties:
             Schedule: cron(0 10 1 * ? *)
             Description: Monthly settlement calculation
-            Enabled: true
+            Enabled: !If [SchedulesEnabled, true, false]
             Input: '{"resources": ["MonthlySettlement"]}'
 
   WebhookFunction:
@@ -114,7 +308,7 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref TransactionsTable
         - AWSSecretsManagerGetSecretValuePolicy:
-            SecretArn: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:cc-classifier/${Environment}/secrets-*
+            SecretArn: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:cc-classifier/${SecretsEnvironment}/secrets-*
       Events:
         DiscordWebhook:
           Type: Api
@@ -123,6 +317,16 @@ Resources:
             Method: POST
 
 Outputs:
+  AdminSiteUrl:
+    Value: !Sub https://${AdminDistribution.DomainName}/
+  AdminSiteBucketName:
+    Value: !Ref AdminSiteBucket
+  AdminUserPoolId:
+    Value: !Ref AdminUserPool
+  AdminUserPoolClientId:
+    Value: !Ref AdminUserPoolClient
+  AdminCognitoDomain:
+    Value: !Sub ${AdminUserPoolDomain}.auth.${AWS::Region}.amazoncognito.com
   InteractionsEndpointUrl:
     Description: URL to paste into Discord Developer Portal -> General Information -> Interactions Endpoint URL
     Value: !Sub https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/discord

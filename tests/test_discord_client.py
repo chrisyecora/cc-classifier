@@ -56,6 +56,24 @@ def test_send_message_success(mocker, env_setup):
     )
 
 
+def test_dev_messages_are_labeled_and_noninteractive(mocker, env_setup, monkeypatch):
+    from config import reset_config
+
+    monkeypatch.setenv("ENVIRONMENT", "dev")
+    monkeypatch.setenv("LOCAL_BYPASS_SECRETS", "true")
+    reset_config()
+    mock_post = mocker.patch("requests.post")
+    mock_post.return_value.status_code = 200
+    mocker.patch("time.sleep")
+
+    assert send_message("Preview settlement", "999", components=[{"type": 1}], embeds=[{"title": "Test"}])
+    payload = mock_post.call_args.kwargs["json"]
+    assert payload["content"] == "**DEV TESTING**\nPreview settlement"
+    assert payload["embeds"] == [{"title": "Test"}]
+    assert "components" not in payload
+    reset_config()
+
+
 def test_send_message_failure(mocker, env_setup):
     mock_post = mocker.patch("requests.post")
     mock_post.side_effect = Exception("Error")
