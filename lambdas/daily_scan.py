@@ -9,7 +9,6 @@ from lib.storage import (
     update_transaction_details,
 )
 from lib.discord_client import send_transaction_notification, send_settlement_notification, send_error_notification
-from lib.settlement import calculate_settlement, format_settlement_message
 
 
 def handler(event, _context):
@@ -108,7 +107,8 @@ def _handle_daily_scan():
 
 def _handle_monthly_settlement():
     today = date.today()
-    # Calculate for the statement period ending last month
-    result = calculate_settlement(today)
-    msg = format_settlement_message(result)
-    send_settlement_notification(msg)
+    prior_month = today.replace(day=1).toordinal() - 1
+    label = date.fromordinal(prior_month).strftime("%B %Y")
+    send_settlement_notification(
+        f"**{label} statement review is due.** Confirm its dates and classifications in the admin page, then publish the settlement."
+    )

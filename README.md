@@ -24,6 +24,8 @@ This project is built using a modern, event-driven serverless architecture on AW
 
 ## ✨ Key Features
 
+- **Statement Review App:** A React/TypeScript admin page for confirming statement dates, correcting classifications and notes, and publishing reviewed settlement totals or revisions to Discord. See [statement review setup](docs/statement-review.md).
+
 - **Automated Daily Sync:** A scheduled EventBridge rule triggers a Lambda function daily to fetch the latest cleared transactions via Plaid and persist them to DynamoDB.
 - **Interactive Discord UI:** New transactions are pushed to a private Discord channel as rich embedded messages. Users can classify expenses directly within Discord using:
   - **Buttons:** Quickly assign 100% of the cost to User A or User B, or split it 50/50.
@@ -31,7 +33,7 @@ This project is built using a modern, event-driven serverless architecture on AW
   - **Modals:** Add contextual text notes to a transaction for future reference.
     ![screenshot of the Discord UI](./images/discord_classification_msg.png)
 - **Webhook State Management:** When a user interacts with a message, Discord sends a payload to the API Gateway. A dedicated Webhook Lambda verifies the request signature, atomically updates the transaction state in DynamoDB, and dynamically updates the message color (e.g., green for classified, grey for ignored) to prevent double-processing.
-- **Automated Settlements:** On the 1st of every month, an automated job queries DynamoDB using a Date Index to retrieve all transactions from the previous billing cycle. It calculates the final balances and posts a settlement summary to a dedicated Discord channel.
+- **Reviewed Settlements:** On the 1st of every month, an automated job posts a review reminder. An admin confirms the actual billing dates and classifications in the statement review app, then publishes the settlement summary to a dedicated Discord channel.
   ![screenshot of the Discord UI](./images/discord_settlement_msg.png)
 - **Transaction Management:** Users can mark specific transactions (like credit card payments) as "Ignored" to exclude them from the monthly calculation, or easily undo a classification if a mistake was made.
 

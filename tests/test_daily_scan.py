@@ -53,20 +53,12 @@ def test_handler_daily_scan_no_cursor_initial(mocker, env_setup):
 
 def test_handler_monthly_settlement(mocker, env_setup):
     event = {"resources": ["arn:aws:events:us-east-1:123:rule/MonthlySettlement"]}
-
-    # Mock Settlement Logic (unchanged)
-    mock_calculate = mocker.patch("lambdas.daily_scan.calculate_settlement")
-    mock_calculate.return_value.unclassified_count = 0
-    mock_calculate.return_value.user_a.total_owed = "100.00"
-    mock_calculate.return_value.user_b.total_owed = "50.00"
-
-    mocker.patch("lambdas.daily_scan.format_settlement_message", return_value="Msg")
     mock_send = mocker.patch("lambdas.daily_scan.send_settlement_notification")
 
     handler(event, None)
 
-    mock_calculate.assert_called()
     mock_send.assert_called()
+    assert "review is due" in mock_send.call_args.args[0]
 
 
 def test_handler_unknown_event(mocker, env_setup):
@@ -102,9 +94,8 @@ def test_daily_scan_sends_error_notification_on_failure(mocker, env_setup):
 
 
 def test_monthly_settlement_sends_error_notification_on_failure(mocker, env_setup):
-    # Mock dependencies
-    mock_calc = mocker.patch("lambdas.daily_scan.calculate_settlement")
-    mock_calc.side_effect = Exception("DynamoDB Error: ProvisionedThroughputExceeded")
+    mock_send = mocker.patch("lambdas.daily_scan.send_settlement_notification")
+    mock_send.side_effect = Exception("Discord Error")
 
     mock_send_error = mocker.patch("lambdas.daily_scan.send_error_notification")
 
@@ -112,10 +103,10 @@ def test_monthly_settlement_sends_error_notification_on_failure(mocker, env_setu
     event = {"resources": ["arn:aws:events:rule/MonthlySettlement"]}
 
     # Run handler and expect exception
-    with pytest.raises(Exception, match="DynamoDB Error"):
+    with pytest.raises(Exception, match="Discord Error"):
         handler(event, None)
 
     # Assert
     mock_send_error.assert_called_once()
     args, _ = mock_send_error.call_args
-    assert "DynamoDB Error: ProvisionedThroughputExceeded" in args[0]
+    assert "Discord Error" in args[0]
