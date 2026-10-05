@@ -7,10 +7,6 @@ Parameters:
     Type: String
     Default: dev
     AllowedValues: [dev, prod]
-  EnableSchedules:
-    Type: String
-    Default: 'true'
-    AllowedValues: ['true', 'false']
   SecretsEnvironment:
     Type: String
     Default: prod
@@ -65,7 +61,7 @@ Globals:
         DISCORD_USER_B: !Ref DiscordUserB
 
 Conditions:
-  SchedulesEnabled: !Equals [!Ref EnableSchedules, 'true']
+  SchedulesEnabled: !Equals [!Ref Environment, prod]
 
 Resources:
   AdminUserPool:
@@ -291,13 +287,15 @@ Resources:
           Properties:
             Schedule: cron(0 9 * * ? *)
             Description: Daily transaction scan
-            Enabled: !If [SchedulesEnabled, true, false]
+            # State preserves the condition through SAM's transform.
+            State: !If [SchedulesEnabled, ENABLED, DISABLED]
         MonthlySettlement:
           Type: Schedule
           Properties:
             Schedule: cron(0 10 1 * ? *)
             Description: Monthly settlement calculation
-            Enabled: !If [SchedulesEnabled, true, false]
+            # State preserves the condition through SAM's transform.
+            State: !If [SchedulesEnabled, ENABLED, DISABLED]
             Input: '{"resources": ["MonthlySettlement"]}'
 
   WebhookFunction:
