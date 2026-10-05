@@ -12,13 +12,13 @@ on:
 
 jobs:
   test-and-lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -39,7 +39,7 @@ jobs:
           pytest tests/
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -49,7 +49,7 @@ jobs:
         run: npm ci --prefix web && npm run build --prefix web
 
       - name: Save admin page build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: admin-page
           path: web/dist
@@ -59,21 +59,21 @@ jobs:
     name: Deploy shared dev preview
     needs: test-and-lint
     if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     concurrency:
       group: cc-classifier-dev-preview
       cancel-in-progress: false
     steps:
       - name: Checkout PR code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -83,7 +83,7 @@ jobs:
         run: pip install boto3
 
       - name: Set up AWS SAM
-        uses: aws-actions/setup-sam@v2
+        uses: aws-actions/setup-sam@v3
 
       - name: Build SAM application
         run: sam build
@@ -108,7 +108,7 @@ jobs:
           DiscordUserB=${{ vars.DISCORD_USER_B }}
 
       - name: Download admin page build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: admin-page
           path: web/dist

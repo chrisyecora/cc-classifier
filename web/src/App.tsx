@@ -47,7 +47,7 @@ function TransactionRow({ transaction, statement, onSaved, onError }: {
 
   return <tr className={excluded ? 'excluded' : ''}>
     <td>{transaction.date}</td>
-    <td><strong>{transaction.merchant || transaction.name || 'Unknown merchant'}</strong><small>{transaction.transaction_id}</small></td>
+    <td><strong>{transaction.merchant || transaction.name || 'Unknown merchant'}</strong></td>
     <td className="amount">${Number(transaction.amount).toFixed(2)}</td>
     <td><select aria-label={`Classification for ${transaction.merchant || transaction.transaction_id}`} value={classification} onChange={e => setClassification(e.target.value as Classification)}>
       <option value="">Unclassified</option><option value="A">{statement.totals.user_a_name}</option>
@@ -73,6 +73,17 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+
+  // The statement total includes unclassified charges, but ignored rows do not
+  // contribute to the amount owed.
+  const totalAmount = statement?.transactions.reduce(
+    (cents, transaction) => cents + (transaction.excluded === 'true' ? 0 : Math.round(Number(transaction.amount) * 100)),
+    0,
+  ) ?? 0
+  const unclassifiedAmount = statement?.transactions.reduce(
+    (cents, transaction) => cents + (transaction.excluded === 'true' || transaction.classification ? 0 : Math.round(Number(transaction.amount) * 100)),
+    0,
+  ) ?? 0
 
   const checkAuth = useCallback(async () => {
     try { await getCurrentUser(); setSignedIn(true) } catch { setSignedIn(false) }
@@ -130,7 +141,14 @@ export default function App() {
         <div className="date-controls"><label>Start <input type="date" value={start} onChange={e => setStart(e.target.value)} /></label><label>End <input type="date" value={end} onChange={e => setEnd(e.target.value)} /></label><button className="primary" onClick={() => void saveDates()} disabled={busy || (statement.confirmed && start === statement.start_date && end === statement.end_date)}>Confirm dates</button></div>
         <p className="hint">Check these dates against the credit card statement before publishing. The next period starts the day after this one ends.</p>
       </section>
-      <section className="cards"><div><span>{statement.totals.user_a_name} owes</span><strong>${statement.totals.user_a}</strong></div><div><span>{statement.totals.user_b_name} owes</span><strong>${statement.totals.user_b}</strong></div><div><span>Unclassified</span><strong>{statement.totals.unclassified_count}</strong></div><div><span>Transactions</span><strong>{statement.transactions.length}</strong></div></section>
+      <section className="cards">
+        <div><span>{statement.totals.user_a_name} owes</span><strong>${statement.totals.user_a}</strong></div>
+        <div><span>{statement.totals.user_b_name} owes</span><strong>${statement.totals.user_b}</strong></div>
+        <div><span>Total amount</span><strong>${(totalAmount / 100).toFixed(2)}</strong></div>
+        <div><span>Unclassified transactions</span><strong>{statement.totals.unclassified_count}</strong></div>
+        <div><span>Unclassified amount</span><strong>${(unclassifiedAmount / 100).toFixed(2)}</strong></div>
+        <div><span>Total transactions</span><strong>{statement.transactions.length}</strong></div>
+      </section>
       <section className="panel"><div className="section-title"><h2>Transactions</h2><span>{statement.transactions.length} in this period</span></div>
         <div className="table-wrap"><table><thead><tr><th>Date</th><th>Merchant</th><th>Amount</th><th>Classification</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody>
           {statement.transactions.map(t => <TransactionRow key={`${t.transaction_id}:${t.edit_version || 0}`} transaction={t} statement={statement} onSaved={load} onError={setError} />)}
