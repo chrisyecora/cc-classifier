@@ -1,61 +1,71 @@
-# Credit Card Tracker (cc-classifier)
+# Credit Card Tracker (`cc-classifier`)
 
-A serverless Python application that automates credit card expense tracking and splitting for two users sharing a single account. Built entirely on AWS, this project integrates with the Plaid API to fetch daily transactions and leverages Discord's interactive UI components (Buttons, Dropdowns, Modals) for real-time expense classification.
+A full-stack, serverless project I built to replace a spreadsheet-based process for splitting expenses on a shared credit card. It connects Plaid transaction data, interactive Discord messages, and a private statement review app so two people can classify purchases as they arrive and settle each billing cycle accurately.
 
-## 🚀 Overview
+The project demonstrates event-driven AWS architecture, third-party API integration, stateful transaction processing, authenticated web development, and deployment automation.
 
-The goal of this project was to eliminate the manual overhead of tracking shared expenses using spreadsheets. By bringing the classification process directly into a Discord channel, it allows users to assign or split transactions with a single click as soon as they clear the bank.
+## Engineering highlights
 
-At the end of each billing cycle, the system automatically calculates the final settlement and generates a summary report, detailing exactly who owes what.
+- **Incremental transaction sync:** A scheduled Lambda persists Plaid's sync cursor in DynamoDB and processes added, modified, and removed transactions.
+- **Interactive workflow:** Discord components and modals let users classify, split, annotate, ignore, and undo transactions. The webhook validates Discord signatures before processing interactions.
+- **Concurrency controls:** Conditional DynamoDB writes prevent duplicate transaction inserts and conflicting classification or admin edits. Statement changes use version checks.
+- **Reviewed settlement:** A Cognito-protected React app lets an admin confirm billing periods, correct transaction data, and publish a calculated settlement or revision to Discord.
+- **Automated delivery:** GitHub Actions checks pull requests, deploys same-repository PRs to an isolated dev stack, and deploys production from `main` using AWS SAM.
 
-## 🛠️ Tech Stack & Architecture
+## How it works
 
-This project is built using a modern, event-driven serverless architecture on AWS.
+1. An EventBridge schedule runs the daily scan at 09:00 UTC in production. The Lambda uses Plaid's transaction sync cursor, stores transactions in DynamoDB, and sends new transactions to a Discord classification channel.
+2. Discord buttons, menus, and modals let users assign a transaction to either person, choose a split, add a note, ignore it, or undo a classification. The webhook verifies Discord's Ed25519 signature before updating DynamoDB.
+3. On the first of each month, a separate 10:00 UTC schedule posts a **review reminder**, not a settlement amount.
+4. An admin signs in to the statement review app, confirms the inclusive billing dates, fixes transaction details, and publishes the calculated settlement to the Discord settlements channel. Subsequent edits can be published as a revision.
 
-- **Language:** Python 3.11
-- **Infrastructure as Code:** AWS SAM (Serverless Application Model)
-- **Compute:** AWS Lambda (Event-driven processing and webhook handling)
-- **Database:** Amazon DynamoDB (NoSQL storage with atomic updates for high concurrency)
-- **API Gateway:** HTTP API for receiving and validating Discord Webhooks via Ed25519 signatures
-- **Scheduling:** Amazon EventBridge (Cron jobs for daily syncing and monthly settlements)
-- **External APIs:**
-  - **Plaid API:** Securely authenticates and fetches bank transaction data.
-  - **Discord API:** Sends rich embeds and handles interactive message components.
+![Discord transaction classification message](images/discord_classification_msg.png)
 
-## ✨ Key Features
+## Architecture
 
-- **Statement Review App:** A React/TypeScript admin page for confirming statement dates, correcting classifications and notes, and publishing reviewed settlement totals or revisions to Discord. See [statement review setup](docs/statement-review.md).
+- **Backend:** Python 3.11 AWS Lambda functions for daily scanning, Discord interactions, and the admin API.
+- **Data:** DynamoDB stores transactions, the Plaid sync cursor, and statement review metadata. AWS Secrets Manager supplies Plaid and Discord credentials.
+- **APIs:** API Gateway REST endpoints receive Discord interactions and serve the admin API. Cognito authorizes the admin routes.
+- **Admin site:** React, TypeScript, and Vite build a static site served through CloudFront and a private S3 bucket. CloudFront forwards `/api/*` to API Gateway.
+- **Infrastructure:** AWS SAM defines the resources and the production schedules.
 
-- **Automated Daily Sync:** A scheduled EventBridge rule triggers a Lambda function daily to fetch the latest cleared transactions via Plaid and persist them to DynamoDB.
-- **Interactive Discord UI:** New transactions are pushed to a private Discord channel as rich embedded messages. Users can classify expenses directly within Discord using:
-  - **Buttons:** Quickly assign 100% of the cost to User A or User B, or split it 50/50.
-  - **Dropdown Menus:** Select custom percentage splits (e.g., 70/30) or input a specific dollar amount.
-  - **Modals:** Add contextual text notes to a transaction for future reference.
-    ![screenshot of the Discord UI](./images/discord_classification_msg.png)
-- **Webhook State Management:** When a user interacts with a message, Discord sends a payload to the API Gateway. A dedicated Webhook Lambda verifies the request signature, atomically updates the transaction state in DynamoDB, and dynamically updates the message color (e.g., green for classified, grey for ignored) to prevent double-processing.
-- **Reviewed Settlements:** On the 1st of every month, an automated job posts a review reminder. An admin confirms the actual billing dates and classifications in the statement review app, then publishes the settlement summary to a dedicated Discord channel.
-  ![screenshot of the Discord UI](./images/discord_settlement_msg.png)
-- **Transaction Management:** Users can mark specific transactions (like credit card payments) as "Ignored" to exclude them from the monthly calculation, or easily undo a classification if a mistake was made.
+The review app's workflow, authentication, and deployment details are in [docs/statement-review.md](docs/statement-review.md).
 
-## 🔒 Enterprise-Ready Engineering
+## Repository layout
 
-While this began as a personal automation project, it has been rigorously engineered to production standards, demonstrating a mature Software Development Lifecycle (SDLC):
+| Path | Purpose |
+| --- | --- |
+| `lambdas/daily_scan.py` | Plaid sync and monthly review reminder |
+| `lambdas/webhook.py` | Discord interaction verification and handling |
+| `lambdas/admin_api.py` | Statement review and publishing endpoints |
+| `lib/` | Plaid and Discord clients, DynamoDB storage, statement and settlement logic |
+| `web/` | React statement review app |
+| `scripts/` | Local utilities and deployment helpers |
+| `template.yaml` | AWS SAM infrastructure |
+| `tests/` | Python tests |
 
-- **CI/CD Pipelines:** GitHub Actions automatically enforce code quality (linting and formatting), run the comprehensive `pytest` suite, and manage seamless deployments (`sam build` & `sam deploy`) to AWS upon merging to the `main` branch.
-- **Secret Management:** Sensitive credentials (like Plaid and Discord API tokens) are securely stored and fetched dynamically using **AWS Secrets Manager**, avoiding static environment variables or `.env` files in production.
-- **Environment Isolation:** AWS SAM parameters are leveraged to maintain strictly bifurcated `dev` and `prod` stacks, ensuring safe testing against isolated DynamoDB tables without impacting live settlement data.
-- **Security & IAM:** Adheres to the principle of least privilege. Lambda execution roles are tightly scoped, granting access only to the specific DynamoDB tables and Secrets Manager resources required.
-- **Observability:** Positioned for high reliability with planned integration of structured JSON logging for Amazon CloudWatch and automated alarms to proactively monitor function health and third-party API integrations.
+## Local checks
 
-## 📁 Project Structure
+Use Python 3.11 and Node.js 22. From the repository root:
 
-- `lambdas/`: AWS Lambda function handlers for cron jobs (`daily_scan.py`) and API webhook events (`webhook.py`).
-- `lib/`: Core business logic including API clients (`plaid_client.py`, `discord_client.py`), database interactions (`storage.py`), and mathematical settlement logic (`settlement.py`).
-- `tests/`: Comprehensive `pytest` suite with over 90% code covereage utilizing `pytest-mock` and `moto` to simulate AWS services locally without requiring live credentials.
-- `template.yaml`: The AWS SAM template defining the infrastructure resources, IAM policies, and environment variables.
+```sh
+python3.11 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt ruff
+.venv/bin/python -m pytest tests/
+.venv/bin/ruff check .
+.venv/bin/ruff format --check .
+npm ci --prefix web
+npm run build --prefix web
+```
 
-## 🎯 Purpose
+The frontend build checks TypeScript and bundles the app. An end-to-end sign-in check uses a deployed site because Cognito's callback URL is the CloudFront address. `scripts/run_local.py` has utilities for scanning, webhook simulation, and inspecting or changing DynamoDB data; commands that touch external services need suitable environment configuration and credentials.
 
-This project is a personal automation for my partner and I to more easily track the expenses that we put on a shared credit card. Before, settling up was a messy monthly process inside of a spreadsheet with clunky formulas.
+## Deployment
 
-Now, we have an automated system to notify us of new transactions as they come which also settles up each statement for us, significantly reducing our manual workload!
+The production GitHub Actions workflow runs Python tests, deploys the SAM stack on non-documentation pushes to `main`, updates Discord's interaction endpoint, builds the admin site, and uploads it to S3. The pull request workflow runs Ruff, Python tests, and the frontend build. Passing pull requests from this repository also deploy to a shared `credit-card-tracker-dev` preview stack; fork pull requests only run checks. The preview has its own DynamoDB table, Cognito pool, API, and site, with schedules disabled. Its URL appears in the Actions job summary.
+
+The SAM template accepts `Environment` (`dev` or `prod`), `SecretsEnvironment`, `PlaidEnv`, Discord channel IDs, and the two users' names and Discord usernames. Deployment requires the corresponding AWS credentials and a Secrets Manager secret containing the Plaid and Discord credentials. See [statement review setup](docs/statement-review.md#build-and-deploy) for the admin account and manual dev deployment steps.
+
+## Current scope
+
+The app handles transaction classification and reviewed settlement publication for a shared card. It does not automatically publish calculated totals at month end; the admin confirms the statement first. Planned operational work, including structured logging and alarms, is tracked in [docs/production_roadmap.md](docs/production_roadmap.md).
