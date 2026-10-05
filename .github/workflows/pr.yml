@@ -98,7 +98,6 @@ jobs:
           --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM
           --parameter-overrides
           Environment=dev
-          EnableSchedules=false
           SecretsEnvironment=prod
           DiscordClassificationsChannelId=${{ vars.DISCORD_CLASSIFICATIONS_CHANNEL_ID }}
           DiscordSettlementsChannelId=${{ vars.DISCORD_SETTLEMENTS_CHANNEL_ID }}
